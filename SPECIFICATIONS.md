@@ -14,7 +14,7 @@ sur une carte OpenStreetMap.
   son propre jeu de relais (les 5 plus proches de *son* centre).
 * **Niveaux de canal de l'app** : 2 (région), 4 (province), 5 (ville), 6 (quartier), 7 (bloc). Le
   niveau 3 n'est pas un niveau de canal : il ne sert ici que de maille d'agrégation sur la carte.
-  
+  Le niveau 7 n'est pas observé par défaut ; il peut être demandé explicitement.
 * **Kinds 20000 (message) et 20001 (présence) éphémères** : les relais les relaient en direct et
   ne les stockent presque pas. L'outil est un **moniteur**, pas un scanner d'historique ; la
   `since` initiale (1 h) ne ramène qu'un complément marginal.
@@ -41,10 +41,14 @@ sur une carte OpenStreetMap.
   | 4c | — | 32 | 1 024 |
   | 5c | — | — | 32 |
 
-  Au-delà, on ne descend qu'à la demande (clic sur une cellule, cf. §4).
+  Un dépassement est une erreur qui donne l'effectif réel. Au-delà, on ne descend qu'à la
+  demande (clic sur une cellule, cf. §4).
 
 ### 2. Plan d'écoute : inversion canal → relais
 
+* Listes de relais : hors tests, rechargées une fois toutes les 24 h ; le plan est recalculé et
+  seules les différences sont appliquées aux connexions. Dans les tests, les CSV sont figés
+  (copies dans `tests/data/`) pour la reproductibilité.
 * Pour chaque canal, calculer les relais iOS et Android (`select_both`, égalités comprises).
 * Probe des relais une fois au démarrage (`probe.rs`) ; les relais morts sont écartés, pas remplacés.
 * Inverser en `relais → [canaux]`, puis ouvrir **une connexion par relais** avec des filtres
@@ -52,6 +56,15 @@ sur une carte OpenStreetMap.
   souscriptions par connexion bornés, valeurs configurables).
 * Lecture seule : aucune publication, pas d'AUTH NIP-42 (comme l'app), reconnexion avec backoff,
   plafond global de connexions.
+
+### 2 bis. Retrait des canaux inactifs
+
+* Un canal sans aucun événement (message ou présence) depuis un délai configurable (défaut
+  **5 min**, compté depuis le début de son observation) est **retiré du monitoring** : il sort
+  des filtres envoyés aux relais, et un relais qui n'a plus de canal est déconnecté.
+* Il n'est réintégré que sur **demande explicite** (un canal, une liste, ou tous).
+* Chaque retrait et chaque réintégration est journalisé au niveau **INFO**.
+* L'état (surveillé ou retiré) est conservé en base et survit à un redémarrage.
 
 ### 3. Agrégation
 
@@ -71,6 +84,16 @@ sur une carte OpenStreetMap.
 
 * Agrégat optionnel « somme des enfants » pour les mailles parentes (dont le niveau 3),
   distinct de l'activité propre du canal.
+* Signatures vérifiées ; un événement hors plan (tag `g` inconnu) est rejeté.
+
+### 3 bis. Persistance
+
+* Base **SQLite** locale.
+* Schéma **versionné** : migrations numérotées, appliquées dans l'ordre au démarrage, chacune
+  dans une transaction ; la version courante est enregistrée dans la base.
+* Contenu : chargements des listes de relais, verdicts de probe, état de chaque canal
+  (surveillé ou retiré), compteurs agrégés par cellule et par tranche de temps.
+* Conformément au §5 : ni pubkey, ni nickname, ni contenu de message en base.
 
 ### 4. Carte et interaction
 
@@ -94,8 +117,8 @@ sur une carte OpenStreetMap.
 ## Plan
 
 1. **Librairie Rust** (`bitchat-geohash`)
-   * Extraire `geo.rs` et `probe.rs` de `bitchat-envelope/examples/common` dans la lib (les
-     exemples existants l'utilisent ensuite).
+   * Reprendre `geo.rs` et `probe.rs` de `bitchat-envelope/examples/common` par copie dans la
+     lib ; `bitchat-envelope` n'est pas modifié (dépendance par chemin uniquement).
    * Énumération (§1), plan d'écoute (§2), agrégation (§3).
    * Tests hors ligne : énumération, sélection et inversion des relais, agrégation avec
      `MockRelay` / `MockBitchat` (feature `mock` de `bitchat-envelope`).
