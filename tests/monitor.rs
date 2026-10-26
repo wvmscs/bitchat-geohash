@@ -63,12 +63,15 @@ async fn inactive_channels_are_retired_and_logged() {
     }
     assert!(monitor.status().await.unwrap().retired.is_empty());
 
-    clock.set(base + 300);
+    clock.set(base + inactivity());
     let s = status_until(&monitor, "32 retired", |s| s.retired.len() == 32).await;
     assert_eq!(s.watched, ["u09tvq"]);
     assert_eq!(s.relays, [relay.url()], "still needed by u09tvq");
     assert_eq!(
-        logs.info_lines("retired from monitoring: inactive for 5 min"),
+        logs.info_lines(&format!(
+            "retired from monitoring: inactive for {} min",
+            inactivity() / 60
+        )),
         32
     );
     assert_eq!(logs.info_lines("channel u09tv retired"), 1);
@@ -100,7 +103,7 @@ async fn retired_channels_survive_a_restart_until_reinstated() {
     .await
     .unwrap();
     status_until(&monitor, "connected", connected).await;
-    clock.set(base + 300);
+    clock.set(base + inactivity());
     let s = status_until(&monitor, "all retired", |s| s.watched.is_empty()).await;
     assert!(s.relays.is_empty());
     drop(monitor.shutdown().await.unwrap());
@@ -126,7 +129,7 @@ async fn retired_channels_survive_a_restart_until_reinstated() {
     let s = status_until(&monitor, "reconnected", connected).await;
     assert_eq!(s.watched, ["u09tv", "u09tvq"]);
     // The delay starts again from the reinstatement.
-    clock.set(base + 300 + 299);
+    clock.set(base + 2 * inactivity() - 1);
     tokio::time::sleep(Duration::from_millis(100)).await;
     assert_eq!(monitor.status().await.unwrap().watched.len(), 2);
     assert_eq!(monitor.reinstate_all().await.unwrap().len(), 31);
@@ -163,7 +166,7 @@ async fn reinstate_all_at_start() {
     )
     .await
     .unwrap();
-    clock.set(clock.get() + 300);
+    clock.set(clock.get() + inactivity());
     status_until(&monitor, "all retired", |s| s.watched.is_empty()).await;
     drop(monitor.shutdown().await.unwrap());
 

@@ -2,7 +2,7 @@
 //! terminal: plan, relay verdicts, then the active cells, refreshed.
 //!
 //!   cargo run -p bitchat-geohash --example watch -- u09 --depth 2 \
-//!       [--levels 2,4,5,6] [--max-cells 2048] [--window 15m] [--inactivity 5m] \
+//!       [--levels 2,4,5,6] [--max-cells 2048] [--window 15m] [--inactivity 15m] \
 //!       [--relays-csv <url|path>] [--android-csv <url|path> | --no-android] \
 //!       [--no-probe] [--db bitchat-geohash.sqlite] [--reinstate-all] \
 //!       [--refresh 5s] [--duration 20m] [--verbose]
@@ -41,7 +41,7 @@ struct Args {
 fn usage() -> ! {
     eprintln!(
         "usage: watch <geohash> [--depth N] [--levels 2,4,5,6] [--max-cells N] [--window 15m] \
-         [--inactivity 5m] [--relays-csv <url|path>] [--android-csv <url|path> | --no-android] \
+         [--inactivity 15m] [--relays-csv <url|path>] [--android-csv <url|path> | --no-android] \
          [--no-probe] [--db <path>] [--reinstate-all] [--refresh 5s] [--duration <d>] [--verbose]"
     );
     std::process::exit(2)

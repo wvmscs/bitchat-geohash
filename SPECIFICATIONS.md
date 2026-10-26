@@ -60,7 +60,7 @@ sur une carte OpenStreetMap.
 ### 2 bis. Retrait des canaux inactifs
 
 * Un canal sans aucun événement (message ou présence) depuis un délai configurable (défaut
-  **5 min**, compté depuis le début de son observation) est **retiré du monitoring** : il sort
+  **15 min**, compté depuis le début de son observation) est **retiré du monitoring** : il sort
   des filtres envoyés aux relais, et un relais qui n'a plus de canal est déconnecté.
 * Il n'est réintégré que sur **demande explicite** (un canal, une liste, ou tous).
 * Chaque retrait et chaque réintégration est journalisé au niveau **INFO**.

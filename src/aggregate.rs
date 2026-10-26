@@ -21,7 +21,7 @@ pub struct AggregatorConfig {
     /// Counting window, on `created_at` (default 15 min).
     pub window_secs: i64,
     /// A watched channel without any event for this long is inactive
-    /// (default 5 min).
+    /// (default 15 min).
     pub inactivity_secs: i64,
     /// At level 6, fewer participants than this are shown as "low", without
     /// a number (default 3).
@@ -32,7 +32,7 @@ impl Default for AggregatorConfig {
     fn default() -> Self {
         AggregatorConfig {
             window_secs: 15 * 60,
-            inactivity_secs: 5 * 60,
+            inactivity_secs: 15 * 60,
             k_threshold: 3,
         }
     }

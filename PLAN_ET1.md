@@ -177,7 +177,7 @@ port fermé → `Dead` ; hôte inconnu → `Dead` ; HTTP 404 → `Dead`, 503 →
 - [x] Seuil *k* = 3 au niveau 6 : `participants` vaut `None` (« faible »). En base, les
       compteurs par minute restent bruts (des nombres, sans identifiant).
 - [x] Somme des enfants (`mesh(precision, now)`) pour les mailles parentes (niveau 3 compris), distincte de l'activité propre.
-- [x] `inactive(now)` (délai par défaut 5 min) : canaux sans événement depuis le délai, compté
+- [x] `inactive(now)` (délai par défaut 15 min, 5 min jusqu'au lot 9) : canaux sans événement depuis le délai, compté
       depuis le dernier événement ou, à défaut, depuis le début de l'observation du canal
       (`watch()` le remet à zéro). Activité = `created_at` plafonné à l'heure de réception :
       un horodatage dans le futur ne garde pas un canal en vie.
@@ -186,7 +186,7 @@ port fermé → `Dead` ; hôte inconnu → `Dead` ; HTTP 404 → `Dead`, 503 →
 
 Tests (`tests/aggregate.rs`, 11 tests) : même événement reçu de 3 relais → compté une fois ; signature invalide rejetée ;
 événement d'un canal hors plan rejeté ; sortie de fenêtre ; seuil *k* ; somme des enfants ;
-canal muet 5 min → inactif ; canal réintégré → délai reparti de zéro.
+canal muet pendant le délai → inactif ; canal réintégré → délai reparti de zéro.
 
 ### Lot 7 : écoute des relais ✅
 
@@ -203,7 +203,7 @@ canal muet 5 min → inactif ; canal réintégré → délai reparti de zéro.
       `reinstate(channels)` et `reinstate_all()` ; état des canaux lu et écrit dans `channel`,
       donc conservé après un redémarrage (D6) ; option `--reinstate-all` au lancement.
 - [x] Journal `tracing` niveau INFO pour chaque retrait (`channel u09tv retired from monitoring:
-      inactive for 5 min`) et chaque réintégration (`channel u09tv reinstated on request`) ;
+      inactive for 15 min`) et chaque réintégration (`channel u09tv reinstated on request`) ;
       messages en anglais comme le reste du code.
 
 Tests (`tests/listener.rs`, 7 tests ; `tests/monitor.rs`, 4 tests ; `WsRelay` local, relais
@@ -261,6 +261,7 @@ Fini quand : critères d'acceptation de la spec vérifiés, sauf ceux qui concer
 | D5 | Source des listes rechargées toutes les 24 h | Par défaut les URL officielles (`bitchat/relays/online_relays_gps.csv` et `georelays/nostr_relays.csv`), dernier contenu valide gardé en base comme repli ; un chemin local reste possible | ✅ |
 | D6 | Les canaux retirés le restent-ils après un redémarrage ? | Oui (état en base), avec une option `--reinstate-all` au lancement | ✅ |
 | D7 | Un relais avec plus de 1 000 canaux (100 × 10) : `u09` profondeur 2 donne 14 relais mais 22 connexions (8 relais de Paris à 1 042–1 056 canaux, 11 souscriptions chacun). Le critère de la spec « connexions = relais distincts » n'est donc pas tenu | Plusieurs connexions par relais si besoin, au plus 10 souscriptions chacune ; critère de la spec corrigé ; le lot 9 dira si les relais l'acceptent | ✅ |
+| D8 | Délai de retrait par défaut | 15 min au lieu de 5 (après les mesures du lot 9 : 90 % des canaux retirés à 5 min) | ✅ |
 
 ## Risques
 
@@ -268,7 +269,7 @@ Fini quand : critères d'acceptation de la spec vérifiés, sauf ceux qui concer
   de D3 sont des hypothèses, à mesurer au lot 9.
 - **Peu de trafic réel** : les canaux sont souvent vides ; la validation passe par `geohash_bot`.
 - **Retrait rapide des canaux** : la plupart des canaux sont muets, donc la plupart seront
-  retirés au bout de 5 min ; une activité qui démarre ensuite dans un canal retiré n'est pas
+  retirés au bout du délai (15 min par défaut depuis D8) ; une activité qui démarre ensuite dans un canal retiré n'est pas
   vue tant qu'il n'est pas réintégré. Comportement voulu. Mesuré au lot 9 sur `u09`
   profondeur 2 : 954 canaux sur 1 056 retirés à 5 min, 1 019 à 15 min.
 
@@ -290,3 +291,4 @@ Fini quand : critères d'acceptation de la spec vérifiés, sauf ceux qui concer
 | 26/10/2026 | 8 | Sources et rechargement dans `directory.rs` et `monitor.rs`. Helpers de test regroupés dans `tests/common/`. Vérification manuelle unique en HTTPS réel : iOS 326 relais (identique à la copie figée), Android 324 (332 dans la copie figée : la liste amont change chaque jour). 88 tests. |
 | 26/10/2026 | 9 | Exemple `watch`. **Boucle fermée** sur `wss://relay.famillevital.club` (liste à ce seul relais, kind 20000 publié par `nak` avec une clé jetable dans `u09tvw`) : affiché en moins d'1 s, bonne cellule, « low » (seuil *k*). Premier essai : relais en `502 Bad Gateway`, classé `down` et retenté comme prévu ; relancé par l'utilisateur. **Message de l'app BitChat** (utilisateur, `u09tv`, 21:50:25 UTC) : compté dans `u09tv` seul (pas dans le parent `u09t`) ; horodatage de l'événement ~21:50:35. |
 | 26/10/2026 | 9 | **Réseau public, `u09` profondeur 2, 16 min en lecture seule** : listes officielles (iOS 326, Android 324 relais) ; 1 056 canaux, 13 relais, 12 écoutés, 1 écarté (`relay.cypherflow.ai`, certificat `UnknownIssuer`), 2 injoignables retentés (`treuzkas.branruz.com` HTTP 302, `relay.sovereignresonance.org` délai) ; 23 connexions, 20 ouvertes ; démarrage 9 s (dont 8 s de délai de probe). Les 1 056 canaux ont des relais choisis par une seule app. Événements uniques : 1 929 présences et 7 messages (~120/min), chacun reçu ~7 fois (12 510 doublons) ; 192 hors fenêtre (rattrapage `since` 1 h). Retirés : 954 à 5 min, 1 019 à 15 min, 36 encore surveillés à la fin (Paris : `u09t` 141 participants, `u09tv` 25). Mémoire 16–27 Mo (RSS), base 127 Ko. Seuls 4 relais sur 12 livrent l'activité d'une cellule. |
+| 26/10/2026 | — | D8 : délai de retrait par défaut porté de 5 à 15 min (code, spec, AGENTS, `watch`) ; tests calés sur la valeur par défaut. |

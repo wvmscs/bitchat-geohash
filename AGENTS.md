@@ -145,7 +145,7 @@ Planned for step 1 (see `PLAN_ET1.md` for the details and current state):
    transaction, version in `PRAGMA user_version`. Never edit or reorder a committed migration;
    fix with a new one. Refuse to open a database newer than the code.
 5. **Inactive channels stay retired.** A channel without any event for the inactivity delay
-   (default 5 min) leaves the filters, and is reinstated only on explicit request. Every
+   (default 15 min) leaves the filters, and is reinstated only on explicit request. Every
    retirement and reinstatement is logged at INFO. The state survives a restart.
 6. **Count each event once.** Deduplicate by event `id` across relays; reject bad signatures,
    kinds other than 20000/20001 and `g` tags outside the plan.

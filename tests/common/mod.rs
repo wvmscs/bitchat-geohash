@@ -326,3 +326,8 @@ pub fn list_csv(urls: &[&str]) -> String {
     }
     csv
 }
+
+/// Default inactivity delay, in seconds.
+pub fn inactivity() -> i64 {
+    bitchat_geohash::aggregate::AggregatorConfig::default().inactivity_secs
+}

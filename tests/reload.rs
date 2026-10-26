@@ -236,7 +236,7 @@ async fn retirements_survive_a_list_change() {
     )
     .await
     .unwrap();
-    clock.set(clock.get() + 300);
+    clock.set(clock.get() + inactivity());
     status_until(&monitor, "all retired", |s| s.watched.is_empty()).await;
 
     *body.lock().unwrap() = Some(list_csv(&[&b]));
