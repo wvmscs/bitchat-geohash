@@ -18,7 +18,7 @@ dépendance par chemin, en lecture seule.
 | 5 | Probe des relais | ✅ |
 | 6 | Agrégation et détection d'inactivité | ✅ |
 | 7 | Écoute des relais (WebSocket) | ✅ |
-| 8 | Rechargement des listes de relais toutes les 24 h | ⬜ |
+| 8 | Rechargement des listes de relais toutes les 24 h | ✅ |
 | 9 | Exemple `watch` et validation sur le réseau réel | ⬜ |
 
 Ordre : 0 → 1 → 2 → 3 sont hors réseau et s'enchaînent ; 4, 5 et 6 sont indépendants entre
@@ -212,18 +212,24 @@ reçue ; fermeture du serveur → reconnexion ; REQ découpées conformes au pla
 retiré des REQ et log INFO émis ; dernier canal d'un relais retiré → déconnexion ;
 réintégration → REQ rétablie ; redémarrage du `Monitor` → canaux retirés toujours retirés.
 
-### Lot 8 : rechargement des listes de relais toutes les 24 h ⬜
+### Lot 8 : rechargement des listes de relais toutes les 24 h ✅
 
-- [ ] Source de chaque liste : URL officielle par défaut, ou chemin local (D5) ; dernier
+- [x] Source de chaque liste : URL officielle par défaut, ou chemin local (D5) ; dernier
       contenu valide gardé en base comme repli (téléchargement en échec au démarrage).
-- [ ] Rechargement une fois toutes les 24 h (délai configurable, désactivé dans les tests) ;
-      chaque chargement enregistré dans `relay_list_load`.
-- [ ] Si l'empreinte n'a pas changé : rien à faire. Sinon : nouveau plan, probe des nouveaux
-      relais seulement, diff appliqué.
-- [ ] Échec du rechargement : on garde la liste en cours, log WARN, nouvel essai au cycle suivant.
+      `ListSource`, `ListSources::official()`, `fetch()` ; une liste sans relais utilisable est
+      une erreur ; sans aucune liste, `Monitor::start_from_sources` échoue (`NoRelayList`).
+- [x] Rechargement une fois toutes les 24 h (`reload_every`, ramené à 150 ms dans les tests,
+      qui lisent un serveur HTTP local) ; chaque chargement enregistré dans `relay_list_load`.
+      Téléchargement, nouveau plan et probe dans une tâche à part : la boucle n'est pas bloquée.
+- [x] Si l'empreinte n'a pas changé : rien à faire. Sinon : nouveau plan, probe des nouveaux
+      relais seulement (`probe_new_relays`), diff appliqué ; canaux retirés et relais écartés
+      reportés sur le nouveau plan.
+- [x] Échec du rechargement : on garde la liste en cours, log WARN, nouvel essai au cycle suivant.
 
-Tests : liste modifiée → diff attendu (relais ajouté, relais retiré) ; liste identique → aucun
-diff ; source en échec → plan inchangé.
+Tests (`tests/reload.rs`, 8 tests) : liste modifiée → connexions déplacées ; liste identique →
+aucune nouvelle souscription ni reconnexion, chargements enregistrés, contenu stocké une fois ;
+source en échec → plan inchangé, WARN, reprise au cycle suivant ; repli sur la base au
+démarrage ; aucune liste → erreur ; canaux retirés conservés après changement de liste.
 
 ### Lot 9 : exemple `watch` et validation réelle ⬜
 
@@ -275,3 +281,4 @@ Fini quand : critères d'acceptation de la spec vérifiés, sauf ceux qui concer
 | 26/10/2026 | 5 | `probe.rs` repris avec `Status`, `probe_relays` (un probe par relais du plan) et l'enregistrement en base. Serveurs de test réutilisables (`tests/common/`) pour le lot 7. |
 | 26/10/2026 | 6 | `aggregate.rs` : `Aggregator`, `CellStats`, `MeshStats`, `Rejection`. Aucune pubkey dans ce qui sort (test sur la sortie `Debug`). Lots 4, 5 et 6 commités séparément. |
 | 26/10/2026 | 7 | `listener.rs` et `monitor.rs`. `MockRelay` ne stocke pas les kinds éphémères : les tests publient après la connexion. 80 tests au total, stables sur 3 lancements. Ressources du lot 9 notées : relais `wss://relay.famillevital.club`, pubkey via `nak decode hiha@famillevital.club`, app BitChat avec téléportation. |
+| 26/10/2026 | 8 | Sources et rechargement dans `directory.rs` et `monitor.rs`. Helpers de test regroupés dans `tests/common/`. Vérification manuelle unique en HTTPS réel : iOS 326 relais (identique à la copie figée), Android 324 (332 dans la copie figée : la liste amont change chaque jour). 88 tests. |

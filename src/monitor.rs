@@ -6,7 +6,11 @@
 //! * feeds what the relays deliver to the aggregator;
 //! * every tick, retires the channels inactive for the delay (logged at
 //!   INFO) and hands the complete minutes to the store;
-//! * answers the handle's requests (reinstatement, snapshots, status).
+//! * answers the handle's requests (reinstatement, snapshots, status);
+//! * with [`Monitor::start_from_sources`], reloads the relay lists every
+//!   `reload_every` (24 h): unchanged lists change nothing; changed ones give
+//!   a new plan, new relays are probed, and the connections follow. A failed
+//!   download keeps the current list (logged at WARN) until the next cycle.
 
 use std::collections::BTreeMap;
 use std::time::Duration;
@@ -16,12 +20,14 @@ use tokio::task::JoinHandle;
 
 use crate::aggregate::{Aggregator, AggregatorConfig, CellStats, MeshStats, Rejection};
 use crate::channels::{DEFAULT_MAX_CHANNELS, Level, enumerate};
-use crate::directory::RelayDirectory;
+use crate::directory::{ListSource, Platform, RelayDirectory, fetch};
 use crate::error::{Error, Result};
 use crate::listener::{ConnState, Listener, ListenerConfig, ListenerEvent};
 use crate::plan::{ListenPlan, PlanConfig};
-use crate::probe::{PROBE_CONCURRENCY, PROBE_TIMEOUT, Status, Verdict, probe_relays};
-use crate::store::{ChannelState, Store, StoreWriter, Write};
+use crate::probe::{
+    PROBE_CONCURRENCY, PROBE_TIMEOUT, Status, Verdict, probe_new_relays, probe_relays,
+};
+use crate::store::{ChannelState, RelayListLoad, Store, StoreWriter, Write, sha256_hex};
 
 #[derive(Clone)]
 pub struct MonitorConfig {
@@ -41,6 +47,8 @@ pub struct MonitorConfig {
     pub tick: Duration,
     /// Watch the channels retired in a previous run again.
     pub reinstate_all: bool,
+    /// Relay list reload period, with [`Monitor::start_from_sources`].
+    pub reload_every: Duration,
 }
 
 impl MonitorConfig {
@@ -58,7 +66,77 @@ impl MonitorConfig {
             probe_concurrency: PROBE_CONCURRENCY,
             tick: Duration::from_secs(5),
             reinstate_all: false,
+            reload_every: Duration::from_secs(24 * 3600),
         }
+    }
+}
+
+/// Where the relay lists come from; a missing one is not used.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListSources {
+    pub ios: Option<ListSource>,
+    pub android: Option<ListSource>,
+}
+
+impl ListSources {
+    /// The official lists of both apps (D5).
+    pub fn official() -> Self {
+        ListSources {
+            ios: Some(ListSource::official(Platform::Ios)),
+            android: Some(ListSource::official(Platform::Android)),
+        }
+    }
+
+    fn each(&self) -> Vec<(Platform, ListSource)> {
+        [
+            (Platform::Ios, &self.ios),
+            (Platform::Android, &self.android),
+        ]
+        .into_iter()
+        .filter_map(|(p, s)| s.clone().map(|s| (p, s)))
+        .collect()
+    }
+}
+
+/// The lists in use, for the reload.
+struct Lists {
+    sources: ListSources,
+    ios: Option<RelayDirectory>,
+    android: Option<RelayDirectory>,
+    sha256: BTreeMap<Platform, String>,
+}
+
+/// Result of a reload, computed off the control loop.
+struct Reloaded {
+    loads: Vec<RelayListLoad>,
+    failures: Vec<(Platform, String, String)>,
+    /// New lists, plan (before retirements and dead relays) and verdicts of
+    /// its new relays; `None` when no list changed.
+    changed: Option<NewLists>,
+}
+
+struct NewLists {
+    ios: Option<RelayDirectory>,
+    android: Option<RelayDirectory>,
+    plan: ListenPlan,
+    verdicts: BTreeMap<String, Verdict>,
+}
+
+fn load_record(
+    platform: Platform,
+    source: &ListSource,
+    csv: String,
+    dir: &RelayDirectory,
+    at: i64,
+) -> RelayListLoad {
+    RelayListLoad {
+        platform,
+        source: source.describe(),
+        loaded_at: at,
+        sha256: sha256_hex(&csv),
+        relays: dir.len() as u32,
+        rejected: dir.rejected() as u32,
+        csv,
     }
 }
 
@@ -105,6 +183,87 @@ impl Monitor {
         ios: Option<RelayDirectory>,
         android: Option<RelayDirectory>,
         store: Store,
+    ) -> Result<Monitor> {
+        Self::start_inner(config, ios, android, store, None).await
+    }
+
+    /// Like [`Monitor::start`], reading the lists from `sources` and
+    /// reloading them every `config.reload_every`. A list that cannot be
+    /// read falls back to its last valid content in the store (D5); with no
+    /// list at all, starting fails.
+    pub async fn start_from_sources(
+        config: MonitorConfig,
+        sources: ListSources,
+        store: Store,
+    ) -> Result<Monitor> {
+        let now = (config.listener.clock)();
+        let mut fetched = Vec::new();
+        for (platform, source) in sources.each() {
+            fetched.push((platform, source.clone(), fetch(&source).await));
+        }
+        // Database work off the async threads; logging back here.
+        let (store, outcomes) = tokio::task::spawn_blocking(move || {
+            let mut store = store;
+            let mut outcomes = Vec::new();
+            for (platform, source, result) in fetched {
+                let outcome = match result {
+                    Ok((csv, dir)) => {
+                        let record = load_record(platform, &source, csv, &dir, now);
+                        let sha = record.sha256.clone();
+                        store.apply(&[Write::RelayList(record)])?;
+                        Ok((dir, sha))
+                    }
+                    Err(e) => Err((e, store.last_relay_list(platform)?)),
+                };
+                outcomes.push((platform, source, outcome));
+            }
+            Ok::<_, Error>((store, outcomes))
+        })
+        .await
+        .map_err(|_| Error::MonitorStopped)??;
+        let mut loaded = Vec::new();
+        for (platform, source, outcome) in outcomes {
+            let (platform_name, source) = (platform.as_str(), source.describe());
+            match outcome {
+                Ok((dir, sha)) => {
+                    tracing::info!(platform = platform_name, %source, relays = dir.len(), "relay list loaded");
+                    loaded.push((platform, dir, sha));
+                }
+                Err((e, Some(last))) => {
+                    tracing::warn!(platform = platform_name, %source, error = %e, loaded_at = last.loaded_at, "relay list unavailable, using the last valid one");
+                    loaded.push((platform, RelayDirectory::parse(&last.csv), last.sha256));
+                }
+                Err((e, None)) => {
+                    tracing::warn!(platform = platform_name, %source, error = %e, "relay list unavailable, none in the database");
+                }
+            }
+        }
+        if loaded.is_empty() {
+            return Err(Error::NoRelayList);
+        }
+        let mut lists = Lists {
+            sources,
+            ios: None,
+            android: None,
+            sha256: BTreeMap::new(),
+        };
+        for (platform, dir, sha) in loaded {
+            lists.sha256.insert(platform, sha);
+            match platform {
+                Platform::Ios => lists.ios = Some(dir),
+                Platform::Android => lists.android = Some(dir),
+            }
+        }
+        let (ios, android) = (lists.ios.clone(), lists.android.clone());
+        Self::start_inner(config, ios, android, store, Some(lists)).await
+    }
+
+    async fn start_inner(
+        config: MonitorConfig,
+        ios: Option<RelayDirectory>,
+        android: Option<RelayDirectory>,
+        store: Store,
+        lists: Option<Lists>,
     ) -> Result<Monitor> {
         let clock = config.listener.clock.clone();
         let channels = enumerate(
@@ -185,16 +344,21 @@ impl Monitor {
         );
 
         let (tx, rx) = mpsc::unbounded_channel();
+        let (reload_tx, reload_rx) = mpsc::unbounded_channel();
         let state = State {
             config,
+            channels,
             plan,
             aggregator,
             listener,
             writer,
             verdicts,
             connections: BTreeMap::new(),
+            lists,
+            reloading: false,
+            reload_tx,
         };
-        let task = tokio::spawn(state.run(rx, events_rx));
+        let task = tokio::spawn(state.run(rx, events_rx, reload_rx));
         Ok(Monitor { tx, task })
     }
 
@@ -245,12 +409,17 @@ fn watched(geohash: &str, at: i64, reason: &str) -> Write {
 
 struct State {
     config: MonitorConfig,
+    /// Every channel, watched or retired (to rebuild the plan on reload).
+    channels: Vec<String>,
     plan: ListenPlan,
     aggregator: Aggregator,
     listener: Listener,
     writer: StoreWriter,
     verdicts: BTreeMap<String, Verdict>,
     connections: BTreeMap<(String, usize), ConnState>,
+    lists: Option<Lists>,
+    reloading: bool,
+    reload_tx: mpsc::UnboundedSender<Reloaded>,
 }
 
 impl State {
@@ -262,13 +431,27 @@ impl State {
         mut self,
         mut commands: mpsc::UnboundedReceiver<Command>,
         mut events: mpsc::UnboundedReceiver<ListenerEvent>,
+        mut reloads: mpsc::UnboundedReceiver<Reloaded>,
     ) -> Result<Store> {
         let mut ticker = tokio::time::interval(self.config.tick);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let every = self.config.reload_every;
+        let mut reload_timer = self.lists.is_some().then(|| {
+            let mut t = tokio::time::interval_at(tokio::time::Instant::now() + every, every);
+            t.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            t
+        });
         loop {
             tokio::select! {
                 Some(event) = events.recv() => self.on_event(event),
                 _ = ticker.tick() => self.on_tick(),
+                _ = async {
+                    match &mut reload_timer {
+                        Some(t) => t.tick().await,
+                        None => std::future::pending().await,
+                    }
+                } => self.start_reload(),
+                Some(reloaded) = reloads.recv() => self.on_reloaded(reloaded),
                 command = commands.recv() => match command {
                     None | Some(Command::Shutdown) => break,
                     Some(c) => self.on_command(c),
@@ -284,6 +467,124 @@ impl State {
         tokio::task::spawn_blocking(move || writer.close())
             .await
             .map_err(|_| Error::StoreClosed)?
+    }
+
+    /// Fetches the lists and, if one changed, builds the new plan and
+    /// probes its new relays, in a separate task.
+    fn start_reload(&mut self) {
+        let Some(lists) = &self.lists else { return };
+        if self.reloading {
+            return;
+        }
+        self.reloading = true;
+        let sources = lists.sources.clone();
+        let (mut ios, mut android) = (lists.ios.clone(), lists.android.clone());
+        let current = lists.sha256.clone();
+        let channels = self.channels.clone();
+        let plan_config = self.config.plan.clone();
+        let known = self.verdicts.clone();
+        let (probe, concurrency, timeout) = (
+            self.config.probe,
+            self.config.probe_concurrency,
+            self.config.probe_timeout,
+        );
+        let clock = self.config.listener.clock.clone();
+        let tx = self.reload_tx.clone();
+        tokio::spawn(async move {
+            let mut out = Reloaded {
+                loads: Vec::new(),
+                failures: Vec::new(),
+                changed: None,
+            };
+            let mut changed = false;
+            for (platform, source) in sources.each() {
+                match fetch(&source).await {
+                    Ok((csv, dir)) => {
+                        let record = load_record(platform, &source, csv, &dir, clock());
+                        if current.get(&platform) != Some(&record.sha256) {
+                            changed = true;
+                            match platform {
+                                Platform::Ios => ios = Some(dir),
+                                Platform::Android => android = Some(dir),
+                            }
+                        }
+                        out.loads.push(record);
+                    }
+                    Err(e) => out
+                        .failures
+                        .push((platform, source.describe(), e.to_string())),
+                }
+            }
+            if changed {
+                match ListenPlan::build(ios.as_ref(), android.as_ref(), &channels, plan_config) {
+                    Ok(plan) => {
+                        let verdicts = if probe {
+                            probe_new_relays(&plan, &known, concurrency, timeout).await
+                        } else {
+                            BTreeMap::new()
+                        };
+                        out.changed = Some(NewLists {
+                            ios,
+                            android,
+                            plan,
+                            verdicts,
+                        });
+                    }
+                    // Channels were validated at start: cannot happen.
+                    Err(e) => tracing::error!(error = %e, "cannot rebuild the listen plan"),
+                }
+            }
+            let _ = tx.send(out);
+        });
+    }
+
+    fn on_reloaded(&mut self, reloaded: Reloaded) {
+        self.reloading = false;
+        let Some(lists) = &mut self.lists else { return };
+        for (platform, source, error) in &reloaded.failures {
+            tracing::warn!(platform = platform.as_str(), %source, %error, "relay list reload failed, keeping the current one");
+        }
+        for load in &reloaded.loads {
+            lists.sha256.insert(load.platform, load.sha256.clone());
+            let _ = self.writer.send(Write::RelayList(load.clone()));
+        }
+        let Some(NewLists {
+            ios,
+            android,
+            mut plan,
+            verdicts,
+        }) = reloaded.changed
+        else {
+            if !reloaded.loads.is_empty() {
+                tracing::info!("relay lists reloaded: unchanged");
+            }
+            return;
+        };
+        lists.ios = ios;
+        lists.android = android;
+        // Carry the retirements and the relays set aside over.
+        let retired = self.plan.retired();
+        plan.retire(&retired.iter().map(String::as_str).collect::<Vec<_>>());
+        let now = self.now();
+        for (relay, v) in &verdicts {
+            let _ = self.writer.send(v.to_write(relay, now));
+        }
+        self.verdicts.extend(verdicts);
+        let dropped: Vec<&str> = self
+            .verdicts
+            .iter()
+            .filter(|(_, v)| !v.status.worth_listening())
+            .map(|(r, _)| r.as_str())
+            .collect();
+        plan.drop_relays(&dropped);
+        let diff = self.plan.diff(&plan);
+        tracing::info!(
+            relays = plan.relays().len(),
+            changed_relays = diff.relays.len(),
+            "relay lists reloaded: new plan"
+        );
+        self.plan = plan;
+        self.listener.sync(&self.plan);
     }
 
     fn on_event(&mut self, event: ListenerEvent) {

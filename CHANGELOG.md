@@ -13,6 +13,7 @@
 - `aggregate`: `Aggregator` (deduplication, signature check, sliding window, inactivity, k threshold, meshes, per-minute buckets).
 - `listener`: one task per relay connection, plan sync, reconnection with jittered backoff, AUTH ignored, abandon on dead or AUTH-only relays.
 - `monitor`: `Monitor` control loop: retirement of inactive channels (logged at INFO, kept across restarts), reinstatement, snapshots, status.
+- Relay list sources (`ListSource`, `ListSources::official()`, `fetch`), `Monitor::start_from_sources` with fallback on the last valid list and reload every 24 h.
 - Frozen relay lists in `tests/data/` (iOS `online_relays_gps.csv`, Android `nostr_relays.csv`).
 
 ### Changed

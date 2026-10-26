@@ -4,7 +4,7 @@ use std::collections::HashSet;
 
 /// Which app reads a relay list: iOS reads bitchat's reviewed
 /// `relays/online_relays_gps.csv`, Android georelays' daily `nostr_relays.csv`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Platform {
     Ios,
     Android,
@@ -120,4 +120,79 @@ fn parse_line(line: &str) -> Option<DirectoryRelay> {
         return None;
     }
     Some(DirectoryRelay { url, lat, lon })
+}
+
+/// iOS list, as the app downloads it (`GeoRelayDirectory.swift`).
+pub const IOS_LIST_URL: &str = "https://raw.githubusercontent.com/permissionlesstech/bitchat/refs/heads/main/relays/online_relays_gps.csv";
+/// Android list: georelays' daily output, unreviewed.
+pub const ANDROID_LIST_URL: &str =
+    "https://raw.githubusercontent.com/permissionlesstech/georelays/main/nostr_relays.csv";
+
+/// Where a relay list comes from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ListSource {
+    Url(String),
+    Path(std::path::PathBuf),
+}
+
+impl ListSource {
+    /// The official list of a platform (D5).
+    pub fn official(platform: Platform) -> Self {
+        ListSource::Url(
+            match platform {
+                Platform::Ios => IOS_LIST_URL,
+                Platform::Android => ANDROID_LIST_URL,
+            }
+            .to_owned(),
+        )
+    }
+
+    /// `http://` or `https://` is a URL, anything else a local path.
+    pub fn parse(s: &str) -> Self {
+        if s.starts_with("https://") || s.starts_with("http://") {
+            ListSource::Url(s.to_owned())
+        } else {
+            ListSource::Path(s.into())
+        }
+    }
+
+    /// As recorded in the database.
+    pub fn describe(&self) -> String {
+        match self {
+            ListSource::Url(u) => u.clone(),
+            ListSource::Path(p) => p.display().to_string(),
+        }
+    }
+}
+
+/// Download or read timeout.
+pub const FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Reads a list. A list without any usable relay is an error: it would
+/// leave every channel without relay.
+pub async fn fetch(source: &ListSource) -> crate::Result<(String, RelayDirectory)> {
+    let csv = match source {
+        ListSource::Url(url) => {
+            crate::install_crypto_provider();
+            let client = reqwest::Client::builder().timeout(FETCH_TIMEOUT).build()?;
+            client
+                .get(url)
+                .send()
+                .await?
+                .error_for_status()?
+                .text()
+                .await?
+        }
+        ListSource::Path(path) => {
+            let path = path.clone();
+            tokio::task::spawn_blocking(move || std::fs::read_to_string(path))
+                .await
+                .map_err(|e| std::io::Error::other(e.to_string()))??
+        }
+    };
+    let dir = RelayDirectory::parse(&csv);
+    if dir.is_empty() {
+        return Err(crate::Error::EmptyRelayList(source.describe()));
+    }
+    Ok((csv, dir))
 }

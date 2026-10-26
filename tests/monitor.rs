@@ -3,90 +3,16 @@
 
 mod common;
 
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicI64, Ordering};
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use bitchat_envelope::envelope::unix_now;
 use bitchat_envelope::mock::MockRelay;
 use bitchat_envelope::mock::ws::WsRelay;
 use bitchat_envelope::{Event, Identity};
 use bitchat_geohash::KIND_GEO_MESSAGE;
-use bitchat_geohash::listener::{ConnState, ListenerConfig};
-use bitchat_geohash::monitor::{Monitor, MonitorConfig, MonitorStatus};
+use bitchat_geohash::monitor::Monitor;
 use bitchat_geohash::probe::Status;
 use bitchat_geohash::store::Store;
 use common::*;
-
-/// Captured log output (current-thread runtime: the monitor task logs on
-/// the test thread).
-#[derive(Clone, Default)]
-struct Logs(Arc<Mutex<Vec<u8>>>);
-
-impl std::io::Write for Logs {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0.lock().unwrap().extend_from_slice(buf);
-        Ok(buf.len())
-    }
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
-impl Logs {
-    fn capture() -> (Self, tracing::subscriber::DefaultGuard) {
-        let logs = Logs::default();
-        let writer = logs.clone();
-        let subscriber = tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::INFO)
-            .with_ansi(false)
-            .with_writer(move || writer.clone())
-            .finish();
-        (logs, tracing::subscriber::set_default(subscriber))
-    }
-
-    fn text(&self) -> String {
-        String::from_utf8_lossy(&self.0.lock().unwrap()).into_owned()
-    }
-
-    fn info_lines(&self, needle: &str) -> usize {
-        self.text()
-            .lines()
-            .filter(|l| l.contains(" INFO ") && l.contains(needle))
-            .count()
-    }
-}
-
-struct TestClock(Arc<AtomicI64>);
-
-impl TestClock {
-    fn new() -> Self {
-        TestClock(Arc::new(AtomicI64::new(unix_now())))
-    }
-    fn set(&self, t: i64) {
-        self.0.store(t, Ordering::SeqCst);
-    }
-    fn get(&self) -> i64 {
-        self.0.load(Ordering::SeqCst)
-    }
-}
-
-fn config(start: &str, clock: &TestClock) -> MonitorConfig {
-    let c = clock.0.clone();
-    MonitorConfig {
-        depth: 1,
-        probe: false,
-        tick: Duration::from_millis(30),
-        listener: ListenerConfig {
-            backoff_min: Duration::from_millis(50),
-            backoff_max: Duration::from_millis(200),
-            clock: Arc::new(move || c.load(Ordering::SeqCst)),
-            ..ListenerConfig::default()
-        },
-        ..MonitorConfig::new(start)
-    }
-}
 
 fn message(who: &Identity, channel: &str, created_at: i64) -> Event {
     let tags = vec![vec!["g".to_owned(), channel.to_owned()]];
@@ -99,50 +25,6 @@ fn message(who: &Identity, channel: &str, created_at: i64) -> Event {
     )
     .sign(who)
     .unwrap()
-}
-
-async fn status_until(
-    monitor: &Monitor,
-    what: &str,
-    check: impl Fn(&MonitorStatus) -> bool,
-) -> MonitorStatus {
-    for _ in 0..150 {
-        let s = monitor.status().await.unwrap();
-        if check(&s) {
-            return s;
-        }
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
-    panic!(
-        "timed out waiting for: {what}: {:?}",
-        monitor.status().await.unwrap()
-    );
-}
-
-fn connected(s: &MonitorStatus) -> bool {
-    !s.connections.is_empty()
-        && s.connections
-            .iter()
-            .all(|c| c.state == ConnState::Connected)
-}
-
-struct TempDb(PathBuf);
-
-impl TempDb {
-    fn new(name: &str) -> Self {
-        TempDb(std::env::temp_dir().join(format!(
-            "bitchat-geohash-monitor-{name}-{}.sqlite",
-            std::process::id()
-        )))
-    }
-}
-
-impl Drop for TempDb {
-    fn drop(&mut self) {
-        for suffix in ["", "-wal", "-shm"] {
-            let _ = std::fs::remove_file(format!("{}{suffix}", self.0.display()));
-        }
-    }
 }
 
 #[tokio::test]

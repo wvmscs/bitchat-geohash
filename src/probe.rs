@@ -133,9 +133,21 @@ pub async fn probe_relays(
     concurrency: usize,
     timeout: Duration,
 ) -> BTreeMap<String, Verdict> {
+    probe_new_relays(plan, &BTreeMap::new(), concurrency, timeout).await
+}
+
+/// Like [`probe_relays`], for the relays without a verdict in `known` only
+/// (after a relay list reload).
+pub async fn probe_new_relays(
+    plan: &ListenPlan,
+    known: &BTreeMap<String, Verdict>,
+    concurrency: usize,
+    timeout: Duration,
+) -> BTreeMap<String, Verdict> {
     let targets: Vec<(String, String)> = plan
         .relays()
         .into_iter()
+        .filter(|relay| !known.contains_key(relay))
         .filter_map(|relay| {
             let channel = plan
                 .subscriptions(&relay)

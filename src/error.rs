@@ -24,6 +24,10 @@ pub enum Error {
     StoreClosed,
     #[error("the monitor has stopped")]
     MonitorStopped,
+    #[error("relay list {0} has no usable relay")]
+    EmptyRelayList(String),
+    #[error("no relay list available (download failed and none in the database)")]
+    NoRelayList,
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
     /// Boxed: it carries an HTTP response and would bloat every `Result`.
