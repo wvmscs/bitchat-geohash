@@ -14,7 +14,7 @@ dépendance par chemin, en lecture seule.
 | 1 | Annuaire de relais et sélection par canal | ✅ |
 | 2 | Énumération des canaux | ✅ |
 | 3 | Plan d'écoute dynamique (inversion canal → relais, retrait, réintégration) | ✅ |
-| 4 | Persistance SQLite et migrations | ⬜ |
+| 4 | Persistance SQLite et migrations | ✅ |
 | 5 | Probe des relais | ⬜ |
 | 6 | Agrégation et détection d'inactivité | ⬜ |
 | 7 | Écoute des relais (WebSocket) | ⬜ |
@@ -124,24 +124,26 @@ relais ; découpage aux bornes ; retrait du dernier canal d'un relais → décon
 diff ; réintégration → retour à l'état initial ; plan de `u09` profondeur 2 calculé en moins
 d'une seconde (en `--release`).
 
-### Lot 4 : persistance SQLite et migrations ⬜
+### Lot 4 : persistance SQLite et migrations ✅
 
-- [ ] `Store::open(path)` et `Store::open_in_memory()` (tests).
-- [ ] Migrations versionnées : fichiers `store/migrations/NNNN_nom.sql` embarqués, appliqués
+- [x] `Store::open(path)` et `Store::open_in_memory()` (tests) ; WAL et clés étrangères activés.
+- [x] Migrations versionnées : fichiers `store/migrations/NNNN_nom.sql` embarqués, appliqués
       dans l'ordre, chacun dans une transaction ; version courante dans `PRAGMA user_version`.
       Refus d'ouvrir une base plus récente que le code (erreur explicite). Pas de migration
       descendante : une correction se fait par une nouvelle migration.
-- [ ] `0001_init.sql` :
+- [x] `0001_init.sql` :
   - `relay_list_load` (plateforme, source, date, empreinte SHA-256, nb de relais, nb de lignes rejetées) ;
+  - `relay_list_csv` (empreinte, contenu) : chaque contenu distinct une seule fois, repli de D5 ;
   - `probe_result` (relais, date, statut, texte) ;
   - `channel` (geohash, niveau, état `watched`/`retired`, date du dernier changement, motif) ;
   - `cell_bucket` (geohash, début de tranche, messages, présences, participants) en tranches
     d'une minute.
-- [ ] Écritures depuis le code async : un thread dédié qui reçoit les écritures par canal et les
-      regroupe en transactions.
-- [ ] Aucune pubkey, aucun nickname, aucun contenu dans le schéma (§5), vérifié par un test.
+- [x] Écritures depuis le code async : `StoreWriter`, un thread dédié qui reçoit les écritures
+      par canal et les regroupe en transactions (512 au plus) ; un lot en échec est rejoué
+      écriture par écriture pour ne pas perdre les autres ; `flush()` rend la première erreur.
+- [x] Aucune pubkey, aucun nickname, aucun contenu dans le schéma (§5), vérifié par un test.
 
-Tests : base vide → dernière version ; base à la version N → migrée jusqu'à la dernière ;
+Tests (`tests/store.rs`, 10 tests ; migrations en tests unitaires, 5 tests) : base vide → dernière version ; base à la version N → migrée jusqu'à la dernière ;
 base plus récente → erreur ; migration en échec → base inchangée (rollback) ; schéma sans
 colonne interdite.
 
@@ -254,3 +256,4 @@ Fini quand : critères d'acceptation de la spec vérifiés, sauf ceux qui concer
 | 26/10/2026 | 1 | `directory.rs` et `select.rs` ; sorties identiques à `geohash_map --no-probe` sur 5 canaux (dont égalités iOS et Android). Listes figées : iOS 326 relais (115 doublons), Android 332 (49 doublons), 0 ligne rejetée. Erreur WebSocket mise en `Box` (clippy `result_large_err`). |
 | 26/10/2026 | 2 | `channels.rs` : `Level`, `normalize`, `count`, `enumerate`, `children`. La profondeur compte les niveaux de canal de l'app, observés ou non (depuis `u0`, profondeur 1 = précision 4) ; le filtre `levels` s'applique ensuite. Ordre : niveau le plus grossier d'abord, ordre geohash dans un niveau. |
 | 26/10/2026 | 3 | `plan.rs` : `ListenPlan`, `Subscription`, `PlanDiff`. `u09` profondeur 2 : 1 056 canaux → 14 relais, plan en 130 ms (release). API publique sans durée de vie explicite (règle FFI d'AGENTS.md). D7 validée, critère de la spec corrigé. |
+| 26/10/2026 | 4 | `store/` : `Store`, `StoreWriter`, migrations (`PRAGMA user_version`), `0001_init.sql`. Les heures sont toujours fournies par l'appelant (horloge injectée). La colonne du CSV s'appelle `csv` pour que le test de vie privée puisse interdire `content`. |

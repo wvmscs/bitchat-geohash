@@ -10,6 +10,16 @@ pub enum Platform {
     Android,
 }
 
+impl Platform {
+    /// `"ios"` or `"android"`, as stored in the database.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Platform::Ios => "ios",
+            Platform::Android => "android",
+        }
+    }
+}
+
 /// A relay of a list, with the coordinates the list gives it (estimated from
 /// its IPv4 address upstream, hence many relays on the same point).
 #[derive(Debug, Clone, PartialEq)]

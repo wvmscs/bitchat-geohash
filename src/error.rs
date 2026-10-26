@@ -13,6 +13,15 @@ pub enum Error {
     Io(#[from] std::io::Error),
     #[error("database error: {0}")]
     Sqlite(#[from] rusqlite::Error),
+    #[error("database schema version {found} is newer than this code (up to {supported})")]
+    SchemaTooNew { found: u32, supported: u32 },
+    #[error("migration {name} failed: {source}")]
+    Migration {
+        name: String,
+        source: rusqlite::Error,
+    },
+    #[error("the store writer thread has stopped")]
+    StoreClosed,
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
     /// Boxed: it carries an HTTP response and would bloat every `Result`.
