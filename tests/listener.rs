@@ -5,13 +5,11 @@ mod common;
 use std::collections::BTreeSet;
 use std::time::Duration;
 
-use bitchat_envelope::envelope::unix_now;
-use bitchat_envelope::mock::MockRelay;
-use bitchat_envelope::mock::ws::WsRelay;
-use bitchat_envelope::{Event, Identity};
 use bitchat_geohash::KIND_GEO_MESSAGE;
 use bitchat_geohash::channels::{DEFAULT_MAX_CHANNELS, Level, enumerate};
 use bitchat_geohash::listener::{ConnState, Listener, ListenerConfig, ListenerEvent};
+use bitchat_geohash::nostr::Event;
+use bitchat_geohash::nostr::unix_now;
 use bitchat_geohash::plan::{ListenPlan, PlanConfig};
 use common::*;
 use tokio::sync::mpsc;
@@ -70,18 +68,16 @@ async fn next_observation(rx: &mut mpsc::UnboundedReceiver<ListenerEvent>) -> Ev
 
 #[tokio::test]
 async fn delivered_event_becomes_an_observation() {
-    let relay = WsRelay::spawn("127.0.0.1:0", MockRelay::new())
-        .await
-        .unwrap();
+    let relay = TestRelay::spawn("127.0.0.1:0").await.unwrap();
     let plan = plan_on(&relay.url(), &["u09tv".to_owned()], PlanConfig::default());
     let (tx, mut rx) = mpsc::unbounded_channel();
     let mut listener = Listener::new(fast(), tx);
     listener.sync(&plan);
-    // Kinds 20000/20001 are ephemeral: MockRelay only forwards them live.
+    // Kinds 20000/20001 are ephemeral: the relay only forwards them live.
     wait_connected(&mut rx).await;
     let alice = Identity::generate();
     let live = message(&alice, "u09tv");
-    relay.relay.publish(live.clone());
+    relay.publish(live.clone());
     assert_eq!(next_observation(&mut rx).await.id, live.id);
     listener.shutdown().await;
     relay.shutdown().await;
@@ -107,9 +103,7 @@ async fn wait_connected(rx: &mut mpsc::UnboundedReceiver<ListenerEvent>) {
 
 #[tokio::test]
 async fn reconnects_after_the_relay_goes_away() {
-    let relay = WsRelay::spawn("127.0.0.1:0", MockRelay::new())
-        .await
-        .unwrap();
+    let relay = TestRelay::spawn("127.0.0.1:0").await.unwrap();
     let addr = relay.addr();
     let plan = plan_on(&relay.url(), &["u09tv".to_owned()], PlanConfig::default());
     let (tx, mut rx) = mpsc::unbounded_channel();
@@ -118,16 +112,14 @@ async fn reconnects_after_the_relay_goes_away() {
     wait_connected(&mut rx).await;
     let alice = Identity::generate();
     let first = message(&alice, "u09tv");
-    relay.relay.publish(first.clone());
+    relay.publish(first.clone());
     assert_eq!(next_observation(&mut rx).await.id, first.id);
 
     relay.shutdown().await;
-    let back = WsRelay::spawn(&addr.to_string(), MockRelay::new())
-        .await
-        .unwrap();
+    let back = TestRelay::spawn(&addr.to_string()).await.unwrap();
     wait_connected(&mut rx).await;
     let second = message(&alice, "u09tv");
-    back.relay.publish(second.clone());
+    back.publish(second.clone());
     assert_eq!(next_observation(&mut rx).await.id, second.id);
     listener.shutdown().await;
     back.shutdown().await;

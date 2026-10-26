@@ -45,8 +45,8 @@ Step 3 adds a Swift UI through `uniffi`; the Swift package lives in `swift/`.
 
 1. Always read the file you are about to modify.
 2. Check existing tests before changing code.
-3. Check the existing API before writing code, in this crate and in `bitchat-envelope`
-   (`Event`, `Filter`, `envelope::unix_now`, mocks). Be DRY.
+3. Check the existing API before writing code (`nostr::{Event, Filter, unix_now}`,
+   `tests/common/`). Be DRY.
 4. Run the commands listed under Commands.
 5. Update tests for new functionality.
 6. Update `PLAN_ET1.md`.
@@ -90,7 +90,7 @@ Step 3 adds a Swift UI through `uniffi`; the Swift package lives in `swift/`.
 
 ## Testing
 - [ ] Unit tests added
-- [ ] Integration tests pass (local `WsRelay`)
+- [ ] Integration tests pass (local `TestRelay`)
 - [ ] Manual testing completed (`examples/watch.rs` on real relays)
 
 ## Screenshots (if UI changes)
@@ -100,7 +100,7 @@ Step 3 adds a Swift UI through `uniffi`; the Swift package lives in `swift/`.
 
 ## Commands
 
-Run from the workspace root (`Nostr/`, one level up: the crate depends on `../bitchat-envelope`):
+Run from the crate (a standalone package) or from the local `Nostr/` workspace root:
 
 ```sh
 cargo fmt -p bitchat-geohash --check
@@ -112,14 +112,14 @@ cargo run -p bitchat-geohash --example watch -- u09tvw --depth 0 --no-android \
     --relays-csv own.csv --db own.sqlite --refresh 1s     # one relay only (own.csv lists it)
 ```
 
-Tests run offline: the frozen CSVs from `tests/data/` and the local `WsRelay` of
-`bitchat-envelope` (feature `mock-ws`, dev-dependency). Only the `watch` example touches the
-real network.
+Tests run offline: the frozen CSVs from `tests/data/` and the local `TestRelay`
+(`tests/common/relay.rs`). Only the `watch` example touches the real network.
 
 ## Layout
 
 Planned for step 1 (see `PLAN_ET1.md` for the details and current state):
 
+- `src/nostr.rs`: NIP-01 subset: `Event` (id, Schnorr verification), `Filter`, `unix_now`.
 - `src/directory.rs`: `RelayDirectory`, CSV parsing and normalisation, list sources.
 - `src/select.rs`: relay choice per channel (`closest`, `select_both`), from `geo.rs`.
 - `src/channels.rs`: `Level`, channel enumeration.
@@ -169,17 +169,19 @@ Planned for step 1 (see `PLAN_ET1.md` for the details and current state):
 - Relay coordinates come from IP geolocation: many relays share the same point, hence ties.
   iOS breaks ties by host, Android keeps CSV order.
 
-## bitchat-envelope gotchas
+## NIP-01 module and test helpers
 
-- Edition 2021, MSRV 1.75; this crate is edition 2024. Do not change `bitchat-envelope`.
-- `Event::new_unsigned(...)` then `.sign(&identity)`; `Event::verify()` checks id and
-  Schnorr signature; `Event::tag_value("g")` reads the first `g` tag.
-- `Filter::tags` is a `BTreeMap<char, Vec<String>>` (`'g'` → geohashes); `Filter::to_json()`
-  builds the REQ filter.
-- `MockBitchat` models private messages only. Build geohash events (kinds 20000/20001,
-  `g` tag) by hand with `Event` and an `Identity`.
-- `MockRelay` is sync and thread-safe; `mock::ws::WsRelay::spawn("127.0.0.1:0", relay)` gives
-  a real WebSocket relay for listener tests.
+- The crate has no dependency on `bitchat-envelope`: `src/nostr.rs` holds the NIP-01 subset it
+  needs. It verifies (`k256` BIP-340 `verify_raw` over the 32-byte id) but never signs:
+  signing lives in the tests only.
+- `Event::verify()` checks the id against the content, then the signature;
+  `Event::tag_value("g")` reads the first `g` tag. `Filter::tags` maps `'g'` to geohashes,
+  `Filter::to_json()` builds the REQ filter, `Filter::matches()` serves the test relay.
+- Tests: `TestRelay::spawn("127.0.0.1:0")` is a real WebSocket NIP-01 relay (`url()`,
+  `addr()`, `publish(event)`, `shutdown()`). Like real relays it forwards kinds 20000–29999
+  live without storing them: publish after the listener is connected.
+- Tests: `Identity::generate()` gives deterministic keys (no random source);
+  `Event::new_unsigned(...).sign(&who)` comes from the `Sign` trait of `tests/common/`.
 
 ## Real-network checks
 
@@ -193,7 +195,7 @@ Planned for step 1 (see `PLAN_ET1.md` for the details and current state):
 ## Tests
 
 - Unit tests cover pure logic (directory, selection, enumeration, plan, diff, aggregation,
-  migrations). Listener and monitor tests use a local `WsRelay` and an injected clock.
+  migrations). Listener and monitor tests use the local `TestRelay` and an injected clock.
 - Add a test with each behavior change; for privacy changes add a negative test (what must
   *not* appear in a snapshot, a log line or the database).
 - Timing tests (plan of `u09` depth 2 under one second) are `#[ignore]` and run in `--release`.

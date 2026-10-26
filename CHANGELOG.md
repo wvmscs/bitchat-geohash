@@ -18,6 +18,7 @@
 - Frozen relay lists in `tests/data/` (iOS `online_relays_gps.csv`, Android `nostr_relays.csv`).
 
 ### Changed
+- No dependency on `bitchat-envelope` any more: `nostr` module (NIP-01 event, Schnorr verification with `k256`, filter, `unix_now`); tests use an integrated NIP-01 relay (`tests/common/relay.rs`). The crate builds on its own.
 - License: GPL-3.0-only (the repository's `LICENSE`).
 - Default inactivity delay before a channel is retired: 15 min (was 5 min).
 - `normalize_url` keeps an explicit `ws://` (local test relays).

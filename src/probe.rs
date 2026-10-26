@@ -9,11 +9,11 @@ use std::error::Error as StdError;
 use std::io::ErrorKind;
 use std::time::{Duration, Instant};
 
-use bitchat_envelope::envelope::unix_now;
 use futures_util::{SinkExt, StreamExt, stream};
 use serde_json::{Value, json};
 use tokio_tungstenite::tungstenite::{Error as WsError, Message};
 
+use crate::nostr::unix_now;
 use crate::plan::{ListenPlan, Subscription};
 use crate::store::Write;
 

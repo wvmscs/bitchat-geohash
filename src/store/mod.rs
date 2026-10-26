@@ -91,11 +91,7 @@ pub enum Write {
 
 /// SHA-256 of a relay list, hex: tells whether a reload changed anything.
 pub fn sha256_hex(csv: &str) -> String {
-    hex(&Sha256::digest(csv.as_bytes()))
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    crate::nostr::hex_encode(&Sha256::digest(csv.as_bytes()))
 }
 
 pub struct Store {

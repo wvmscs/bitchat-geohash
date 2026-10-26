@@ -12,8 +12,6 @@ use std::hash::{BuildHasher, RandomState};
 use std::sync::Arc;
 use std::time::Duration;
 
-use bitchat_envelope::Event;
-use bitchat_envelope::envelope::unix_now;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
@@ -21,6 +19,7 @@ use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::aggregate::Observation;
+use crate::nostr::{Event, unix_now};
 use crate::plan::{ListenPlan, Subscription};
 
 /// Unix seconds; injectable for tests.

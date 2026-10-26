@@ -4,8 +4,6 @@ mod common;
 
 use std::time::Duration;
 
-use bitchat_envelope::mock::MockRelay;
-use bitchat_envelope::mock::ws::WsRelay;
 use bitchat_geohash::plan::{ListenPlan, PlanConfig};
 use bitchat_geohash::probe::{Status, probe_relays, probe_with_timeout};
 use bitchat_geohash::store::{Store, Write};
@@ -19,9 +17,7 @@ async fn status_of(url: &str) -> Status {
 
 #[tokio::test]
 async fn mock_relay_is_usable() {
-    let relay = WsRelay::spawn("127.0.0.1:0", MockRelay::new())
-        .await
-        .unwrap();
+    let relay = TestRelay::spawn("127.0.0.1:0").await.unwrap();
     let v = probe_with_timeout(&relay.url(), "u09tv", SHORT).await;
     assert_eq!(v.status, Status::Ok, "{}", v.text);
     assert!(v.text.contains("0 recent event(s)"), "{}", v.text);
@@ -91,9 +87,7 @@ async fn auth_challenge_alone_is_still_usable() {
 
 #[tokio::test]
 async fn one_probe_per_relay_of_the_plan() {
-    let alive = WsRelay::spawn("127.0.0.1:0", MockRelay::new())
-        .await
-        .unwrap();
+    let alive = TestRelay::spawn("127.0.0.1:0").await.unwrap();
     let dead = closed_port().await;
     let dir = directory_of(&[alive.url(), dead.clone()]);
     let channels = vec!["u09tv".to_owned(), "u09tu".to_owned()];

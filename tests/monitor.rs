@@ -5,11 +5,9 @@ mod common;
 
 use std::time::Duration;
 
-use bitchat_envelope::mock::MockRelay;
-use bitchat_envelope::mock::ws::WsRelay;
-use bitchat_envelope::{Event, Identity};
 use bitchat_geohash::KIND_GEO_MESSAGE;
 use bitchat_geohash::monitor::Monitor;
+use bitchat_geohash::nostr::Event;
 use bitchat_geohash::probe::Status;
 use bitchat_geohash::store::Store;
 use common::*;
@@ -30,9 +28,7 @@ fn message(who: &Identity, channel: &str, created_at: i64) -> Event {
 #[tokio::test]
 async fn inactive_channels_are_retired_and_logged() {
     let (logs, _guard) = Logs::capture();
-    let relay = WsRelay::spawn("127.0.0.1:0", MockRelay::new())
-        .await
-        .unwrap();
+    let relay = TestRelay::spawn("127.0.0.1:0").await.unwrap();
     let clock = TestClock::new();
     let base = clock.get();
     let dir = directory_of(&[relay.url()]);
@@ -48,9 +44,9 @@ async fn inactive_channels_are_retired_and_logged() {
 
     // u09tvq speaks at base and at base + 200; the others never do.
     let alice = Identity::generate();
-    relay.relay.publish(message(&alice, "u09tvq", base));
+    relay.publish(message(&alice, "u09tvq", base));
     clock.set(base + 200);
-    relay.relay.publish(message(&alice, "u09tvq", base + 200));
+    relay.publish(message(&alice, "u09tvq", base + 200));
     for _ in 0..150 {
         let snap = monitor.snapshot().await.unwrap();
         if snap
@@ -86,9 +82,7 @@ async fn inactive_channels_are_retired_and_logged() {
 async fn retired_channels_survive_a_restart_until_reinstated() {
     let (logs, _guard) = Logs::capture();
     let db = TempDb::new("restart");
-    let relay = WsRelay::spawn("127.0.0.1:0", MockRelay::new())
-        .await
-        .unwrap();
+    let relay = TestRelay::spawn("127.0.0.1:0").await.unwrap();
     let clock = TestClock::new();
     let base = clock.get();
     let dir = || Some(directory_of(&[relay.url()]));
@@ -153,9 +147,7 @@ async fn retired_channels_survive_a_restart_until_reinstated() {
 async fn reinstate_all_at_start() {
     let (logs, _guard) = Logs::capture();
     let db = TempDb::new("reinstate-all");
-    let relay = WsRelay::spawn("127.0.0.1:0", MockRelay::new())
-        .await
-        .unwrap();
+    let relay = TestRelay::spawn("127.0.0.1:0").await.unwrap();
     let clock = TestClock::new();
     let dir = || Some(directory_of(&[relay.url()]));
     let monitor = Monitor::start(

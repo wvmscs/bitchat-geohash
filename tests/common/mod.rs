@@ -1,6 +1,9 @@
 //! Local relays and servers for the network tests. Each test binary uses a
 //! different subset.
-#![allow(dead_code)]
+#![allow(dead_code, unused_imports)]
+
+mod relay;
+pub use relay::{Identity, Sign, TestRelay};
 
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
@@ -217,7 +220,7 @@ pub struct TestClock(pub std::sync::Arc<std::sync::atomic::AtomicI64>);
 impl TestClock {
     pub fn new() -> Self {
         TestClock(std::sync::Arc::new(std::sync::atomic::AtomicI64::new(
-            bitchat_envelope::envelope::unix_now(),
+            bitchat_geohash::nostr::unix_now(),
         )))
     }
     pub fn set(&self, t: i64) {

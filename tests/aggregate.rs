@@ -5,12 +5,12 @@ mod common;
 
 use std::collections::BTreeMap;
 
-use bitchat_envelope::{Event, Identity};
 use bitchat_geohash::aggregate::{Aggregator, AggregatorConfig, Observation, Rejection};
+use bitchat_geohash::nostr::Event;
 use bitchat_geohash::plan::{ListenPlan, PlanConfig};
 use bitchat_geohash::probe::{Status, Verdict};
 use bitchat_geohash::{KIND_GEO_MESSAGE, KIND_GEO_PRESENCE};
-use common::directory_of;
+use common::{Identity, Sign, directory_of};
 
 const T0: i64 = 1_700_000_040; // a minute boundary
 

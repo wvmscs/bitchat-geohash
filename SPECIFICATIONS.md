@@ -118,10 +118,11 @@ sur une carte OpenStreetMap.
 
 1. **Librairie Rust** (`bitchat-geohash`)
    * Reprendre `geo.rs` et `probe.rs` de `bitchat-envelope/examples/common` par copie dans la
-     lib ; `bitchat-envelope` n'est pas modifié (dépendance par chemin uniquement).
+     lib. La crate ne dépend pas de `bitchat-envelope` : le sous-ensemble NIP-01 utile
+     (événement, vérification de signature, filtre) est dans `src/nostr.rs`.
    * Énumération (§1), plan d'écoute (§2), agrégation (§3).
    * Tests hors ligne : énumération, sélection et inversion des relais, agrégation avec
-     `MockRelay` / `MockBitchat` (feature `mock` de `bitchat-envelope`).
+     un relais NIP-01 de test intégré (`tests/common/relay.rs`).
 2. **Serveur web interne en Rust** (axum + tokio) : sert la page, pousse les mises à jour
    (§4). Un binaire CLI unique ; pas de Node.js.
 3. **Interface Swift** (macOS, iOS)

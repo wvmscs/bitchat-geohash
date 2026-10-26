@@ -8,7 +8,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 
-use bitchat_envelope::Event;
+use crate::nostr::Event;
 
 use crate::channels::Level;
 use crate::plan::ListenPlan;

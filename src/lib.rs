@@ -11,6 +11,7 @@ pub mod directory;
 pub mod error;
 pub mod listener;
 pub mod monitor;
+pub mod nostr;
 pub mod plan;
 pub mod probe;
 pub mod select;

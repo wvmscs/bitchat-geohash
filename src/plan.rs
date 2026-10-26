@@ -7,10 +7,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use bitchat_envelope::Filter;
-
 use crate::directory::RelayDirectory;
 use crate::error::Result;
+use crate::nostr::Filter;
 use crate::select::{Selected, select_both};
 use crate::{KIND_GEO_MESSAGE, KIND_GEO_PRESENCE};
 

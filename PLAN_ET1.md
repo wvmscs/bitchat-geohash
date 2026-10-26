@@ -1,8 +1,8 @@
 # Étape 1 : librairie Rust : plan de réalisation et avancement
 
 Référence : [SPECIFICATIONS.md](SPECIFICATIONS.md), §1 à §3 bis et §5.
-Règle : seuls les fichiers de `bitchat-geohash/` sont modifiés ; `bitchat-envelope` est une
-dépendance par chemin, en lecture seule.
+Règle : seuls les fichiers de `bitchat-geohash/` sont modifiés. Depuis la fin de l'étape 1, la
+crate ne dépend plus de `bitchat-envelope` (voir le journal).
 
 **Légende** : ⬜ à faire · 🟨 en cours · ✅ fait · ⏸ en attente d'une décision
 
@@ -57,7 +57,7 @@ des listes → nouveau plan → diff.
 
 ### Lot 0 : mise en place de la crate ✅
 
-- [x] `Cargo.toml` : `bitchat-envelope` (chemin), `geohash 0.13`, `tokio`, `tokio-tungstenite`
+- [x] `Cargo.toml` : `bitchat-envelope` (chemin ; remplacé depuis par `k256`, voir le journal), `geohash 0.13`, `tokio`, `tokio-tungstenite`
       (rustls, racines webpki), `rustls` (ring), `futures-util`, `serde`, `serde_json`,
       `thiserror`, `tracing`, `rusqlite` (feature `bundled`), `reqwest` (rustls, pour D5),
       `sha2` (empreintes des listes) ; en dev : `bitchat-envelope` avec
@@ -292,3 +292,4 @@ Fini quand : critères d'acceptation de la spec vérifiés, sauf ceux qui concer
 | 26/10/2026 | 9 | Exemple `watch`. **Boucle fermée** sur `wss://relay.famillevital.club` (liste à ce seul relais, kind 20000 publié par `nak` avec une clé jetable dans `u09tvw`) : affiché en moins d'1 s, bonne cellule, « low » (seuil *k*). Premier essai : relais en `502 Bad Gateway`, classé `down` et retenté comme prévu ; relancé par l'utilisateur. **Message de l'app BitChat** (utilisateur, `u09tv`, 21:50:25 UTC) : compté dans `u09tv` seul (pas dans le parent `u09t`) ; horodatage de l'événement ~21:50:35. |
 | 26/10/2026 | 9 | **Réseau public, `u09` profondeur 2, 16 min en lecture seule** : listes officielles (iOS 326, Android 324 relais) ; 1 056 canaux, 13 relais, 12 écoutés, 1 écarté (`relay.cypherflow.ai`, certificat `UnknownIssuer`), 2 injoignables retentés (`treuzkas.branruz.com` HTTP 302, `relay.sovereignresonance.org` délai) ; 23 connexions, 20 ouvertes ; démarrage 9 s (dont 8 s de délai de probe). Les 1 056 canaux ont des relais choisis par une seule app. Événements uniques : 1 929 présences et 7 messages (~120/min), chacun reçu ~7 fois (12 510 doublons) ; 192 hors fenêtre (rattrapage `since` 1 h). Retirés : 954 à 5 min, 1 019 à 15 min, 36 encore surveillés à la fin (Paris : `u09t` 141 participants, `u09tv` 25). Mémoire 16–27 Mo (RSS), base 127 Ko. Seuls 4 relais sur 12 livrent l'activité d'une cellule. |
 | 26/10/2026 | — | D8 : délai de retrait par défaut porté de 5 à 15 min (code, spec, AGENTS, `watch`) ; tests calés sur la valeur par défaut. |
+| 26/10/2026 | — | Dépôt dédié `wvmscs/bitchat-geohash` (privé, GPL-3.0-only). Dépendance à `../bitchat-envelope` supprimée : `src/nostr.rs` (événement, vérification Schnorr via `k256`, filtre, `unix_now`) et, pour les tests, un relais NIP-01 intégré et des clés déterministes (`tests/common/relay.rs`). Le dépôt compile et ses tests passent seul, hors du workspace. 92 tests. |
