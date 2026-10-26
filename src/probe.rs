@@ -158,10 +158,14 @@ pub async fn probe_relays(
 /// Failures a retry won't fix. rustls certificate and handshake errors reach
 /// us as `Io(InvalidData)`; DNS failures as an uncategorised I/O error.
 fn is_permanent(e: &(dyn StdError + 'static)) -> bool {
-    match e.downcast_ref::<WsError>() {
-        Some(WsError::Tls(_) | WsError::Url(_)) => true,
-        Some(WsError::Http(response)) => response.status().is_client_error(),
-        Some(WsError::Io(io)) => {
+    e.downcast_ref::<WsError>().is_some_and(is_permanent_ws)
+}
+
+pub(crate) fn is_permanent_ws(e: &WsError) -> bool {
+    match e {
+        WsError::Tls(_) | WsError::Url(_) => true,
+        WsError::Http(response) => response.status().is_client_error(),
+        WsError::Io(io) => {
             matches!(
                 io.kind(),
                 ErrorKind::ConnectionRefused | ErrorKind::InvalidData

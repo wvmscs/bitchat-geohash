@@ -92,3 +92,83 @@ pub async fn closed_port() -> String {
     drop(l);
     url
 }
+
+/// What a [`recording_relay`] saw.
+#[derive(Clone, Default)]
+pub struct Recording {
+    /// Client frames, with the number of the connection that sent them.
+    pub frames: std::sync::Arc<std::sync::Mutex<Vec<(usize, Value)>>>,
+    /// Connections open now.
+    pub open: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    /// Connections accepted since the start.
+    pub accepted: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl Recording {
+    /// Frames of this type (`"REQ"`, `"CLOSE"`, ...).
+    pub fn frames_of(&self, kind: &str) -> Vec<(usize, Value)> {
+        self.frames
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, v)| v[0] == kind)
+            .cloned()
+            .collect()
+    }
+
+    pub fn open(&self) -> usize {
+        self.open.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    pub fn accepted(&self) -> usize {
+        self.accepted.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+/// A relay that records every client frame and answers each REQ with EOSE.
+/// With `challenge`, it sends an AUTH challenge on connect.
+pub async fn recording_relay(challenge: bool) -> (String, Recording) {
+    use std::sync::atomic::Ordering::SeqCst;
+    let (l, url) = listener().await;
+    let rec = Recording::default();
+    let r = rec.clone();
+    tokio::spawn(async move {
+        while let Ok((stream, _)) = l.accept().await {
+            let r = r.clone();
+            tokio::spawn(async move {
+                let Ok(mut ws) = tokio_tungstenite::accept_async(stream).await else {
+                    return;
+                };
+                let n = r.accepted.fetch_add(1, SeqCst);
+                r.open.fetch_add(1, SeqCst);
+                if challenge {
+                    let _ = ws.send(Message::text(r#"["AUTH","challenge"]"#)).await;
+                }
+                while let Some(Ok(msg)) = ws.next().await {
+                    let Message::Text(text) = msg else { continue };
+                    let Ok(v) = serde_json::from_str::<Value>(text.as_str()) else {
+                        continue;
+                    };
+                    if v[0] == "REQ" {
+                        let eose = serde_json::json!(["EOSE", v[1]]).to_string();
+                        let _ = ws.send(Message::text(eose)).await;
+                    }
+                    r.frames.lock().unwrap().push((n, v));
+                }
+                r.open.fetch_sub(1, SeqCst);
+            });
+        }
+    });
+    (url, rec)
+}
+
+/// Polls `check` every 20 ms for up to 3 s.
+pub async fn eventually(what: &str, mut check: impl FnMut() -> bool) {
+    for _ in 0..150 {
+        if check() {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    panic!("timed out waiting for: {what}");
+}

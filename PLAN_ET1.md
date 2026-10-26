@@ -17,7 +17,7 @@ dépendance par chemin, en lecture seule.
 | 4 | Persistance SQLite et migrations | ✅ |
 | 5 | Probe des relais | ✅ |
 | 6 | Agrégation et détection d'inactivité | ✅ |
-| 7 | Écoute des relais (WebSocket) | ⬜ |
+| 7 | Écoute des relais (WebSocket) | ✅ |
 | 8 | Rechargement des listes de relais toutes les 24 h | ⬜ |
 | 9 | Exemple `watch` et validation sur le réseau réel | ⬜ |
 
@@ -188,22 +188,26 @@ Tests (`tests/aggregate.rs`, 11 tests) : même événement reçu de 3 relais →
 événement d'un canal hors plan rejeté ; sortie de fenêtre ; seuil *k* ; somme des enfants ;
 canal muet 5 min → inactif ; canal réintégré → délai reparti de zéro.
 
-### Lot 7 : écoute des relais ⬜
+### Lot 7 : écoute des relais ✅
 
-- [ ] Une tâche tokio par relais : connexion, REQ du plan, lecture `EVENT`/`EOSE`/`CLOSED`/`NOTICE`.
-- [ ] Application d'un diff de plan à chaud : REQ remplacées, `CLOSE` des souscriptions vides,
-      déconnexion des relais sans canal, connexion des nouveaux.
-- [ ] `AUTH` ignoré (comme l'app) ; `CLOSED auth-required:` → relais marqué `Auth`, pas de retry.
-- [ ] Reconnexion avec backoff exponentiel (1 s → 5 min, avec gigue) ; relais `Dead` abandonné.
-- [ ] État de connexion par relais exposé (connecté, en attente, abandonné).
-- [ ] Arrêt propre (canal de fermeture) ; plafond global de connexions.
-- [ ] `Monitor` : boucle de contrôle qui retire les canaux inactifs (lot 6) et applique le diff ;
+- [x] Une tâche tokio par connexion (un relais très chargé en a plusieurs, D7) : connexion, REQ du plan, lecture `EVENT`/`EOSE`/`CLOSED`/`NOTICE`.
+- [x] Application d'un plan à chaud (`Listener::sync(plan)`, qui compare connexion par connexion
+      avec ce qui est ouvert) : REQ remplacées, `CLOSE` des souscriptions vides, déconnexion des
+      relais sans canal, connexion des nouveaux. `PlanDiff` reste disponible pour l'affichage.
+- [x] `AUTH` ignoré (comme l'app) ; `CLOSED auth-required:` → relais marqué `Auth`, pas de retry.
+- [x] Reconnexion avec backoff exponentiel (1 s → 5 min, avec gigue) ; relais `Dead` abandonné.
+- [x] État de connexion exposé (`ConnState` : en connexion, connecté, en attente, abandonné).
+- [x] Arrêt propre (canal de fermeture) ; plafond global de connexions (256 par défaut).
+- [x] Un relais abandonné en cours de route (mort ou AUTH) sort du plan, verdict enregistré.
+- [x] `Monitor` : boucle de contrôle qui retire les canaux inactifs (lot 6) et applique le diff ;
       `reinstate(channels)` et `reinstate_all()` ; état des canaux lu et écrit dans `channel`,
       donc conservé après un redémarrage (D6) ; option `--reinstate-all` au lancement.
-- [ ] Journal `tracing` niveau INFO pour chaque retrait (« canal u09tv retiré : inactif depuis
-      5 min ») et chaque réintégration.
+- [x] Journal `tracing` niveau INFO pour chaque retrait (`channel u09tv retired from monitoring:
+      inactive for 5 min`) et chaque réintégration (`channel u09tv reinstated on request`) ;
+      messages en anglais comme le reste du code.
 
-Tests (`WsRelay` local, feature `mock-ws`, horloge injectée) : événement publié → Observation
+Tests (`tests/listener.rs`, 7 tests ; `tests/monitor.rs`, 4 tests ; `WsRelay` local, relais
+enregistreur, horloge injectée, journal capturé) : événement publié → Observation
 reçue ; fermeture du serveur → reconnexion ; REQ découpées conformes au plan ; canal muet →
 retiré des REQ et log INFO émis ; dernier canal d'un relais retiré → déconnexion ;
 réintégration → REQ rétablie ; redémarrage du `Monitor` → canaux retirés toujours retirés.
@@ -270,3 +274,4 @@ Fini quand : critères d'acceptation de la spec vérifiés, sauf ceux qui concer
 | 26/10/2026 | 4 | `store/` : `Store`, `StoreWriter`, migrations (`PRAGMA user_version`), `0001_init.sql`. Les heures sont toujours fournies par l'appelant (horloge injectée). La colonne du CSV s'appelle `csv` pour que le test de vie privée puisse interdire `content`. |
 | 26/10/2026 | 5 | `probe.rs` repris avec `Status`, `probe_relays` (un probe par relais du plan) et l'enregistrement en base. Serveurs de test réutilisables (`tests/common/`) pour le lot 7. |
 | 26/10/2026 | 6 | `aggregate.rs` : `Aggregator`, `CellStats`, `MeshStats`, `Rejection`. Aucune pubkey dans ce qui sort (test sur la sortie `Debug`). Lots 4, 5 et 6 commités séparément. |
+| 26/10/2026 | 7 | `listener.rs` et `monitor.rs`. `MockRelay` ne stocke pas les kinds éphémères : les tests publient après la connexion. 80 tests au total, stables sur 3 lancements. Ressources du lot 9 notées : relais `wss://relay.famillevital.club`, pubkey via `nak decode hiha@famillevital.club`, app BitChat avec téléportation. |

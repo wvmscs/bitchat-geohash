@@ -22,6 +22,8 @@ pub enum Error {
     },
     #[error("the store writer thread has stopped")]
     StoreClosed,
+    #[error("the monitor has stopped")]
+    MonitorStopped,
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
     /// Boxed: it carries an HTTP response and would bloat every `Result`.
