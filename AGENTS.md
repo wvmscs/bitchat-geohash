@@ -106,6 +106,8 @@ cargo test -p bitchat-geohash
 cargo clippy -p bitchat-geohash --all-targets --all-features -- -D warnings   # must be 0 warnings
 cargo test -p bitchat-geohash --release -- --ignored                         # timing tests (plan build)
 cargo run -p bitchat-geohash --example watch -- u09 --depth 2                # real network
+cargo run -p bitchat-geohash --example watch -- u09tvw --depth 0 --no-android \
+    --relays-csv own.csv --db own.sqlite --refresh 1s     # one relay only (own.csv lists it)
 ```
 
 Tests run offline: the frozen CSVs from `tests/data/` and the local `WsRelay` of
@@ -176,6 +178,15 @@ Planned for step 1 (see `PLAN_ET1.md` for the details and current state):
   `g` tag) by hand with `Event` and an `Identity`.
 - `MockRelay` is sync and thread-safe; `mock::ws::WsRelay::spawn("127.0.0.1:0", relay)` gives
   a real WebSocket relay for listener tests.
+
+## Real-network checks
+
+- Read-only observation (`watch`) is always fine. Never publish to public relays or real
+  channels without asking (no `geohash_bot` there).
+- Closed loop: a relay list with only `wss://relay.famillevital.club` (the user's own relay,
+  usable for tests), then a kind 20000 event published there with `nak event -k 20000
+  -t g=<geohash> --sec $(nak key generate)`: a throwaway key, never a real identity.
+- A real-app check needs the user: they can teleport their BitChat app to any geohash and post.
 
 ## Tests
 

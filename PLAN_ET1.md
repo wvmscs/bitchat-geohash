@@ -19,7 +19,7 @@ dépendance par chemin, en lecture seule.
 | 6 | Agrégation et détection d'inactivité | ✅ |
 | 7 | Écoute des relais (WebSocket) | ✅ |
 | 8 | Rechargement des listes de relais toutes les 24 h | ✅ |
-| 9 | Exemple `watch` et validation sur le réseau réel | ⬜ |
+| 9 | Exemple `watch` et validation sur le réseau réel | ✅ |
 
 Ordre : 0 → 1 → 2 → 3 sont hors réseau et s'enchaînent ; 4, 5 et 6 sont indépendants entre
 eux ; 7 dépend de 3 à 6 ; 8 dépend de 7 ; 9 clôt l'étape.
@@ -231,15 +231,20 @@ aucune nouvelle souscription ni reconnexion, chargements enregistrés, contenu s
 source en échec → plan inchangé, WARN, reprise au cycle suivant ; repli sur la base au
 démarrage ; aucune liste → erreur ; canaux retirés conservés après changement de liste.
 
-### Lot 9 : exemple `watch` et validation réelle ⬜
+### Lot 9 : exemple `watch` et validation réelle ✅
 
-- [ ] `cargo run -p bitchat-geohash --example watch -- u09 --depth 2` : affiche le plan
+- [x] `cargo run -p bitchat-geohash --example watch -- u09 --depth 2` : affiche le plan
       (canaux, relais, divergence), les verdicts de probe, puis un tableau des cellules actives
-      rafraîchi toutes les 5 s ; les retraits apparaissent dans le journal INFO.
-- [ ] Commandes sur l'entrée standard : `reinstate <geohash>…` et `reinstate all`.
-- [ ] Validation : un message de `geohash_bot` dans un canal observé apparaît en moins de 5 s,
-      dans la bonne cellule et elle seule (critère de la spec).
-- [ ] Mesures notées dans le journal : nombre de relais vivants, d'événements par minute,
+      rafraîchi toutes les 5 s ; les retraits apparaissent dans le journal INFO (stderr).
+      Options : `--levels`, `--max-cells`, `--window`, `--inactivity`, `--relays-csv`,
+      `--android-csv` / `--no-android`, `--no-probe`, `--db`, `--reinstate-all`, `--refresh`,
+      `--duration`, `--verbose`.
+- [x] Commandes sur l'entrée standard : `reinstate <geohash>…`, `reinstate all`, `status`, `quit`.
+- [x] Validation : un message dans un canal observé apparaît en moins de 5 s, dans la bonne
+      cellule et elle seule (critère de la spec). Fait sans `geohash_bot` (qui publierait sur des
+      canaux publics) : boucle fermée sur `wss://relay.famillevital.club` avec `nak` et une clé
+      jetable (< 1 s), puis message de l'app BitChat de l'utilisateur dans `u09tv`.
+- [x] Mesures notées dans le journal : nombre de relais vivants, d'événements par minute,
       nombre de canaux retirés après 5 et 15 min, mémoire, taille de la base.
 
 Fini quand : critères d'acceptation de la spec vérifiés, sauf ceux qui concernent le navigateur
@@ -251,7 +256,7 @@ Fini quand : critères d'acceptation de la spec vérifiés, sauf ceux qui concer
 |---|---|---|---|
 | D1 | Niveau 7 (bloc) observé ? | Non par défaut, activable via `levels` | ✅ |
 | D2 | `max` dépassé : erreur ou troncature ? | Erreur avec l'effectif réel | ✅ |
-| D3 | Taille des filtres | 100 `#g` par filtre, 10 REQ par connexion, ajustables après mesures (lot 9) | ✅ |
+| D3 | Taille des filtres | 100 `#g` par filtre, 10 REQ par connexion, ajustables après mesures (lot 9). Lot 9 : aucun `CLOSED` ni `NOTICE` des 10 relais connectés avec 11 souscriptions sur 2 connexions | ✅ |
 | D4 | Vérifier les signatures ? | Oui ; à revoir si le lot 9 montre un goulot | ✅ |
 | D5 | Source des listes rechargées toutes les 24 h | Par défaut les URL officielles (`bitchat/relays/online_relays_gps.csv` et `georelays/nostr_relays.csv`), dernier contenu valide gardé en base comme repli ; un chemin local reste possible | ✅ |
 | D6 | Les canaux retirés le restent-ils après un redémarrage ? | Oui (état en base), avec une option `--reinstate-all` au lancement | ✅ |
@@ -264,7 +269,8 @@ Fini quand : critères d'acceptation de la spec vérifiés, sauf ceux qui concer
 - **Peu de trafic réel** : les canaux sont souvent vides ; la validation passe par `geohash_bot`.
 - **Retrait rapide des canaux** : la plupart des canaux sont muets, donc la plupart seront
   retirés au bout de 5 min ; une activité qui démarre ensuite dans un canal retiré n'est pas
-  vue tant qu'il n'est pas réintégré. Comportement voulu, à quantifier au lot 9.
+  vue tant qu'il n'est pas réintégré. Comportement voulu. Mesuré au lot 9 sur `u09`
+  profondeur 2 : 954 canaux sur 1 056 retirés à 5 min, 1 019 à 15 min.
 
 ## Journal
 
@@ -282,3 +288,5 @@ Fini quand : critères d'acceptation de la spec vérifiés, sauf ceux qui concer
 | 26/10/2026 | 6 | `aggregate.rs` : `Aggregator`, `CellStats`, `MeshStats`, `Rejection`. Aucune pubkey dans ce qui sort (test sur la sortie `Debug`). Lots 4, 5 et 6 commités séparément. |
 | 26/10/2026 | 7 | `listener.rs` et `monitor.rs`. `MockRelay` ne stocke pas les kinds éphémères : les tests publient après la connexion. 80 tests au total, stables sur 3 lancements. Ressources du lot 9 notées : relais `wss://relay.famillevital.club`, pubkey via `nak decode hiha@famillevital.club`, app BitChat avec téléportation. |
 | 26/10/2026 | 8 | Sources et rechargement dans `directory.rs` et `monitor.rs`. Helpers de test regroupés dans `tests/common/`. Vérification manuelle unique en HTTPS réel : iOS 326 relais (identique à la copie figée), Android 324 (332 dans la copie figée : la liste amont change chaque jour). 88 tests. |
+| 26/10/2026 | 9 | Exemple `watch`. **Boucle fermée** sur `wss://relay.famillevital.club` (liste à ce seul relais, kind 20000 publié par `nak` avec une clé jetable dans `u09tvw`) : affiché en moins d'1 s, bonne cellule, « low » (seuil *k*). Premier essai : relais en `502 Bad Gateway`, classé `down` et retenté comme prévu ; relancé par l'utilisateur. **Message de l'app BitChat** (utilisateur, `u09tv`, 21:50:25 UTC) : compté dans `u09tv` seul (pas dans le parent `u09t`) ; horodatage de l'événement ~21:50:35. |
+| 26/10/2026 | 9 | **Réseau public, `u09` profondeur 2, 16 min en lecture seule** : listes officielles (iOS 326, Android 324 relais) ; 1 056 canaux, 13 relais, 12 écoutés, 1 écarté (`relay.cypherflow.ai`, certificat `UnknownIssuer`), 2 injoignables retentés (`treuzkas.branruz.com` HTTP 302, `relay.sovereignresonance.org` délai) ; 23 connexions, 20 ouvertes ; démarrage 9 s (dont 8 s de délai de probe). Les 1 056 canaux ont des relais choisis par une seule app. Événements uniques : 1 929 présences et 7 messages (~120/min), chacun reçu ~7 fois (12 510 doublons) ; 192 hors fenêtre (rattrapage `since` 1 h). Retirés : 954 à 5 min, 1 019 à 15 min, 36 encore surveillés à la fin (Paris : `u09t` 141 participants, `u09tv` 25). Mémoire 16–27 Mo (RSS), base 127 Ko. Seuls 4 relais sur 12 livrent l'activité d'une cellule. |
