@@ -91,7 +91,14 @@ impl RelayDirectory {
 
 /// Normalises a relay host like the app: `host`, `wss://host`, `host/` and
 /// `host:443` are one relay, case-insensitive. Returns `wss://host`.
+///
+/// An explicit `ws://` is kept, for local test relays without TLS: the
+/// published lists never contain one.
 pub fn normalize_url(raw: &str) -> Option<String> {
+    if let Some(rest) = raw.trim().strip_prefix("ws://") {
+        let host = rest.trim_end_matches('/').to_lowercase();
+        return (!host.is_empty()).then(|| format!("ws://{host}"));
+    }
     let host = raw
         .trim()
         .trim_start_matches("wss://")

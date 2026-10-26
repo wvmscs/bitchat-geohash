@@ -25,3 +25,9 @@ pub const KIND_GEO_PRESENCE: u32 = 20001;
 /// Relays the app sends location-channel traffic to: the closest to the
 /// channel centre (plus ties for the last slot).
 pub const GEO_RELAY_COUNT: usize = 5;
+
+/// Installs ring as the process-wide rustls crypto provider, needed before
+/// any `wss://` connection or HTTPS download. Calling it again is harmless.
+pub fn install_crypto_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}

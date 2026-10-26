@@ -15,7 +15,7 @@ dépendance par chemin, en lecture seule.
 | 2 | Énumération des canaux | ✅ |
 | 3 | Plan d'écoute dynamique (inversion canal → relais, retrait, réintégration) | ✅ |
 | 4 | Persistance SQLite et migrations | ✅ |
-| 5 | Probe des relais | ⬜ |
+| 5 | Probe des relais | ✅ |
 | 6 | Agrégation et détection d'inactivité | ⬜ |
 | 7 | Écoute des relais (WebSocket) | ⬜ |
 | 8 | Rechargement des listes de relais toutes les 24 h | ⬜ |
@@ -147,15 +147,21 @@ Tests (`tests/store.rs`, 10 tests ; migrations en tests unitaires, 5 tests) : ba
 base plus récente → erreur ; migration en échec → base inchangée (rollback) ; schéma sans
 colonne interdite.
 
-### Lot 5 : probe des relais ⬜
+### Lot 5 : probe des relais ✅
 
-- [ ] Reprise de `probe.rs`, avec `status` en `enum Status { Ok, Auth, Refused, Down, Dead, Unprobed }`.
-- [ ] Un probe par relais (et non par canal), sur un canal quelconque de sa liste,
-      concurrence bornée (par défaut 32).
-- [ ] Les relais `Auth` comptent comme inutilisables par l'app, mais restent affichés.
-- [ ] Résultats enregistrés dans `probe_result`.
+- [x] Reprise de `probe.rs`, avec `status` en `enum Status { Ok, Auth, Refused, Down, Dead, Unprobed }`.
+- [x] Un probe par relais (et non par canal), sur le premier canal de sa liste,
+      concurrence bornée (par défaut 32) : `probe_relays(plan, …)`.
+- [x] Les relais `Auth` comptent comme inutilisables par l'app, mais restent affichés :
+      `Status::worth_listening()` écarte `Dead` et `Auth` ; `Down` et `Refused` restent écoutés
+      (reconnexion avec backoff au lot 7).
+- [x] Résultats enregistrés dans `probe_result` (`Verdict::to_write`).
+- [x] `install_crypto_provider()` : ring installé une fois pour `wss://` et HTTPS.
+- [x] `normalize_url` garde un `ws://` explicite (relais de test locaux ; absent des listes publiées).
 
-Tests : `WsRelay` local → `Ok` ; port fermé → `Dead` ; hôte inconnu → `Dead`.
+Tests (`tests/probe.rs`, 9 tests ; serveurs de test dans `tests/common/`) : `WsRelay` local → `Ok` ;
+port fermé → `Dead` ; hôte inconnu → `Dead` ; HTTP 404 → `Dead`, 503 → `Down` ; pas de réponse →
+`Down` ; `CLOSED auth-required:` → `Auth` ; autre `CLOSED` → `Refused` ; challenge AUTH seul → `Ok`.
 
 ### Lot 6 : agrégation et détection d'inactivité ⬜
 
@@ -257,3 +263,4 @@ Fini quand : critères d'acceptation de la spec vérifiés, sauf ceux qui concer
 | 26/10/2026 | 2 | `channels.rs` : `Level`, `normalize`, `count`, `enumerate`, `children`. La profondeur compte les niveaux de canal de l'app, observés ou non (depuis `u0`, profondeur 1 = précision 4) ; le filtre `levels` s'applique ensuite. Ordre : niveau le plus grossier d'abord, ordre geohash dans un niveau. |
 | 26/10/2026 | 3 | `plan.rs` : `ListenPlan`, `Subscription`, `PlanDiff`. `u09` profondeur 2 : 1 056 canaux → 14 relais, plan en 130 ms (release). API publique sans durée de vie explicite (règle FFI d'AGENTS.md). D7 validée, critère de la spec corrigé. |
 | 26/10/2026 | 4 | `store/` : `Store`, `StoreWriter`, migrations (`PRAGMA user_version`), `0001_init.sql`. Les heures sont toujours fournies par l'appelant (horloge injectée). La colonne du CSV s'appelle `csv` pour que le test de vie privée puisse interdire `content`. |
+| 26/10/2026 | 5 | `probe.rs` repris avec `Status`, `probe_relays` (un probe par relais du plan) et l'enregistrement en base. Serveurs de test réutilisables (`tests/common/`) pour le lot 7. |

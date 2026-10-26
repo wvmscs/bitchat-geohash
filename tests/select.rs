@@ -205,3 +205,12 @@ fn one_list_missing() {
     );
     assert!(select_both(None, None, "u09tv").unwrap().is_empty());
 }
+
+#[test]
+fn explicit_ws_scheme_is_kept_for_local_relays() {
+    assert_eq!(
+        normalize_url("ws://127.0.0.1:7777/").as_deref(),
+        Some("ws://127.0.0.1:7777")
+    );
+    assert_eq!(normalize_url("ws://"), None);
+}
