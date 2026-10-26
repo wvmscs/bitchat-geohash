@@ -11,7 +11,7 @@ dépendance par chemin, en lecture seule.
 | Lot | Contenu | État |
 |---|---|---|
 | 0 | Mise en place de la crate | ✅ |
-| 1 | Annuaire de relais et sélection par canal | ⬜ |
+| 1 | Annuaire de relais et sélection par canal | ✅ |
 | 2 | Énumération des canaux | ⬜ |
 | 3 | Plan d'écoute dynamique (inversion canal → relais, retrait, réintégration) | ⬜ |
 | 4 | Persistance SQLite et migrations | ⬜ |
@@ -71,17 +71,21 @@ des listes → nouveau plan → diff.
 
 Fini quand : `cargo build -p bitchat-geohash` et `cargo test -p bitchat-geohash` passent.
 
-### Lot 1 : annuaire de relais et sélection par canal ⬜
+### Lot 1 : annuaire de relais et sélection par canal ✅
 
-- [ ] `RelayDirectory::parse(csv)` : normalisation de l'app (`wss://`, `/` final, `:443`,
+- [x] `RelayDirectory::parse(csv)` : normalisation de l'app (`wss://`, `/` final, `:443`,
       minuscules), doublons retirés, lignes invalides ignorées et comptées.
-- [ ] `closest(dir, geohash, count)` : tri par distance puis par hôte, égalités du dernier
+      Doublon = même hôte **et** mêmes coordonnées ; un hôte listé avec d'autres coordonnées
+      est gardé, la sélection prend son entrée la plus proche (comme `geo.rs`). Coordonnées
+      hors bornes rejetées (nouveau par rapport à `geo.rs`).
+- [x] `closest(dir, geohash, count)` : tri par distance puis par hôte, égalités du dernier
       rang incluses (comportement identique à `geo.rs`).
-- [ ] `select_both(ios, android, geohash)` : union, rang par plateforme.
-- [ ] Le CSV est analysé une seule fois, pas à chaque canal.
+- [x] `select_both(ios, android, geohash)` : union, rang par plateforme.
+- [x] Le CSV est analysé une seule fois, pas à chaque canal.
+- [x] Geohash invalide → `Error::InvalidGeohash` (au lieu d'une liste vide dans `geo.rs`).
 
-Tests (CSV figés) : résultats identiques à `geohash_map` sur quelques canaux (`u09tv`, `u09`,
-`9q8yy`), égalités au 5ᵉ rang, liste absente pour une plateforme, CSV vide ou corrompu.
+Tests (CSV figés, `tests/select.rs`, 11 tests) : résultats identiques à `geohash_map` sur
+`u09tv`, `u09`, `9q8yy`, `gcpvj`, `u0`, égalités au 5ᵉ rang, liste absente pour une plateforme, CSV vide ou corrompu.
 
 ### Lot 2 : énumération des canaux ⬜
 
@@ -240,3 +244,4 @@ Fini quand : critères d'acceptation de la spec vérifiés, sauf ceux qui concer
 | 26/10/2026 | — | Ajouts : retrait des canaux inactifs (5 min) et réintégration explicite, CSV figés en test et rechargés toutes les 24 h, persistance SQLite avec migrations versionnées. D1 à D4 validées. Nouveaux lots 4 (SQLite) et 8 (rechargement), lots renumérotés. |
 | 26/10/2026 | — | D5 et D6 validées. `AGENTS.md` créé. |
 | 26/10/2026 | 0 | Crate en place : dépendances (reqwest 0.13 sans fournisseur crypto embarqué, ring installé au démarrage, cf. lot 8), modules vides, `Error`, constantes, paquet Swift dans `swift/` (`swift build` OK), CSV figés. fmt, tests, clippy `-D warnings` : OK. |
+| 26/10/2026 | 1 | `directory.rs` et `select.rs` ; sorties identiques à `geohash_map --no-probe` sur 5 canaux (dont égalités iOS et Android). Listes figées : iOS 326 relais (115 doublons), Android 332 (49 doublons), 0 ligne rejetée. Erreur WebSocket mise en `Box` (clippy `result_large_err`). |
