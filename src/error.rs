@@ -7,6 +7,8 @@
 pub enum Error {
     #[error("invalid geohash {0:?}")]
     InvalidGeohash(String),
+    #[error("{count} channels requested, more than the maximum of {max}")]
+    TooManyChannels { count: u64, max: usize },
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
     #[error("database error: {0}")]

@@ -6,6 +6,7 @@
 - Crate skeleton: modules of step 1, `Error` type, protocol constants.
 - `directory`: relay list parsing (`RelayDirectory`, `Platform`, `normalize_url`).
 - `select`: the apps' relay choice per channel (`closest`, `select_both`), ties for the last slot included.
+- `channels`: channel levels (`Level`), validation, enumeration with a cap (`enumerate`, `count`).
 - Frozen relay lists in `tests/data/` (iOS `online_relays_gps.csv`, Android `nostr_relays.csv`).
 
 ### Changed

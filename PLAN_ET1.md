@@ -12,7 +12,7 @@ dépendance par chemin, en lecture seule.
 |---|---|---|
 | 0 | Mise en place de la crate | ✅ |
 | 1 | Annuaire de relais et sélection par canal | ✅ |
-| 2 | Énumération des canaux | ⬜ |
+| 2 | Énumération des canaux | ✅ |
 | 3 | Plan d'écoute dynamique (inversion canal → relais, retrait, réintégration) | ⬜ |
 | 4 | Persistance SQLite et migrations | ⬜ |
 | 5 | Probe des relais | ⬜ |
@@ -87,16 +87,17 @@ Fini quand : `cargo build -p bitchat-geohash` et `cargo test -p bitchat-geohash`
 Tests (CSV figés, `tests/select.rs`, 11 tests) : résultats identiques à `geohash_map` sur
 `u09tv`, `u09`, `9q8yy`, `gcpvj`, `u0`, égalités au 5ᵉ rang, liste absente pour une plateforme, CSV vide ou corrompu.
 
-### Lot 2 : énumération des canaux ⬜
+### Lot 2 : énumération des canaux ✅
 
-- [ ] `Level` : niveaux de canal 2, 4, 5, 6 par défaut, 7 sur demande (D1) ; le niveau 3 est une
+- [x] `Level` : niveaux de canal 2, 4, 5, 6 par défaut, 7 sur demande (D1) ; le niveau 3 est une
       maille d'agrégation seulement.
-- [ ] `enumerate(start, depth, levels, max)` : canaux des niveaux demandés contenus dans `start`,
+- [x] `enumerate(start, depth, levels, max)` : canaux des niveaux demandés contenus dans `start`,
       `start` compris s'il est un niveau de canal ; `depth` compte des niveaux de canal.
-- [ ] Validation : alphabet geohash (base32 sans `a i l o`), longueur 2 à 7, minuscules.
-- [ ] Dépassement de `max` (défaut 2 048) : erreur avec l'effectif réel (D2).
+- [x] Validation (`normalize`, qui passe aussi en minuscules) : alphabet geohash (base32 sans `a i l o`), longueur 2 à 7, minuscules.
+- [x] Dépassement de `max` (défaut 2 048) : `Error::TooManyChannels { count, max }`, compté
+      avant toute construction (`count()`) (D2).
 
-Tests : effectifs du tableau de la spec (32, 1 024, 32 768 pour le comptage seul), `u09`
+Tests (`tests/channels.rs`, 10 tests) : effectifs du tableau de la spec (32, 1 024, 32 768 pour le comptage seul), `u09`
 profondeur 2 → 1 056 canaux, départ de niveau 3, `levels` filtrant, niveau 7 explicite,
 entrées invalides.
 
@@ -245,3 +246,4 @@ Fini quand : critères d'acceptation de la spec vérifiés, sauf ceux qui concer
 | 26/10/2026 | — | D5 et D6 validées. `AGENTS.md` créé. |
 | 26/10/2026 | 0 | Crate en place : dépendances (reqwest 0.13 sans fournisseur crypto embarqué, ring installé au démarrage, cf. lot 8), modules vides, `Error`, constantes, paquet Swift dans `swift/` (`swift build` OK), CSV figés. fmt, tests, clippy `-D warnings` : OK. |
 | 26/10/2026 | 1 | `directory.rs` et `select.rs` ; sorties identiques à `geohash_map --no-probe` sur 5 canaux (dont égalités iOS et Android). Listes figées : iOS 326 relais (115 doublons), Android 332 (49 doublons), 0 ligne rejetée. Erreur WebSocket mise en `Box` (clippy `result_large_err`). |
+| 26/10/2026 | 2 | `channels.rs` : `Level`, `normalize`, `count`, `enumerate`, `children`. La profondeur compte les niveaux de canal de l'app, observés ou non (depuis `u0`, profondeur 1 = précision 4) ; le filtre `levels` s'applique ensuite. Ordre : niveau le plus grossier d'abord, ordre geohash dans un niveau. |
