@@ -18,6 +18,7 @@
 - Frozen relay lists in `tests/data/` (iOS `online_relays_gps.csv`, Android `nostr_relays.csv`).
 
 ### Changed
+- License: GPL-3.0-only (the repository's `LICENSE`).
 - Default inactivity delay before a channel is retired: 15 min (was 5 min).
 - `normalize_url` keeps an explicit `ws://` (local test relays).
 - Swift package moved to `swift/`.

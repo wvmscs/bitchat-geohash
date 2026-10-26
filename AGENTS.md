@@ -36,7 +36,9 @@ Step 3 adds a Swift UI through `uniffi`; the Swift package lives in `swift/`.
 - Before each commit, run the commands listed under Commands.
 
 ### Others
-- Pushing commits and tags to the remote (`origin`), once one is configured, is authorized.
+- This crate is its own git repository (`origin` = `git@github.com:wvmscs/bitchat-geohash.git`,
+  branch `main`), nested in the local `Nostr/` Cargo workspace, which is not under git.
+- Pushing commits and tags to `origin` is authorized.
   Never force-push or rewrite pushed history without an explicit request.
 
 ## Workflow
@@ -48,7 +50,7 @@ Step 3 adds a Swift UI through `uniffi`; the Swift package lives in `swift/`.
 4. Run the commands listed under Commands.
 5. Update tests for new functionality.
 6. Update `PLAN_ET1.md`.
-7. Keep commits focused and atomic, scoped to `bitchat-geohash/`.
+7. Keep commits focused and atomic.
 
 ## Environment
 
@@ -98,7 +100,7 @@ Step 3 adds a Swift UI through `uniffi`; the Swift package lives in `swift/`.
 
 ## Commands
 
-Run from the workspace root:
+Run from the workspace root (`Nostr/`, one level up: the crate depends on `../bitchat-envelope`):
 
 ```sh
 cargo fmt -p bitchat-geohash --check

@@ -3,7 +3,8 @@ name = "bitchat-geohash"
 version = "0.1.0"
 edition = "2024"
 description = "Live monitor of BitChat location channels (geohash): channel enumeration, the apps' relay choice, listening to kinds 20000/20001, and per-cell aggregation without personal data."
-license = "Unlicense"
+license = "GPL-3.0-only"
+repository = "https://github.com/wvmscs/bitchat-geohash"
 
 [dependencies]
 bitchat-envelope = { path = "../bitchat-envelope" }
