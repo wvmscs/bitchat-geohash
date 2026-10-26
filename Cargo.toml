@@ -2,5 +2,26 @@
 name = "bitchat-geohash"
 version = "0.1.0"
 edition = "2024"
+description = "Live monitor of BitChat location channels (geohash): channel enumeration, the apps' relay choice, listening to kinds 20000/20001, and per-cell aggregation without personal data."
+license = "Unlicense"
 
 [dependencies]
+bitchat-envelope = { path = "../bitchat-envelope" }
+geohash = "0.13"
+tokio = { version = "1.54", features = ["rt-multi-thread", "net", "sync", "macros", "time"] }
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+rusqlite = { version = "0.41", features = ["bundled"] }
+# Relay list downloads (24 h reload). No bundled crypto provider: the ring one
+# is installed process-wide, as for the WebSocket connections.
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
+sha2 = "0.10"
+
+[dev-dependencies]
+bitchat-envelope = { path = "../bitchat-envelope", features = ["mock-ws"] }
+tracing-subscriber = "0.3"

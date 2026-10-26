@@ -1,14 +1,27 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! Live monitor of BitChat location channels (geohash).
+//!
+//! Enumerates the channels inside a geohash, computes the relays the iOS and
+//! Android apps use for each one, listens to kinds 20000/20001 there and
+//! aggregates activity per cell, without keeping personal data. See
+//! `SPECIFICATIONS.md` and `PLAN_ET1.md`.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub mod aggregate;
+pub mod channels;
+pub mod directory;
+pub mod error;
+pub mod listener;
+pub mod monitor;
+pub mod plan;
+pub mod probe;
+pub mod select;
+pub mod store;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use error::{Error, Result};
+
+/// Location-channel message (ephemeral).
+pub const KIND_GEO_MESSAGE: u32 = 20000;
+/// Location-channel presence heartbeat (ephemeral).
+pub const KIND_GEO_PRESENCE: u32 = 20001;
+/// Relays the app sends location-channel traffic to: the closest to the
+/// channel centre (plus ties for the last slot).
+pub const GEO_RELAY_COUNT: usize = 5;

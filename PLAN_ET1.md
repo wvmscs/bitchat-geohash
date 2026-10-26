@@ -10,7 +10,7 @@ dépendance par chemin, en lecture seule.
 
 | Lot | Contenu | État |
 |---|---|---|
-| 0 | Mise en place de la crate | ⬜ |
+| 0 | Mise en place de la crate | ✅ |
 | 1 | Annuaire de relais et sélection par canal | ⬜ |
 | 2 | Énumération des canaux | ⬜ |
 | 3 | Plan d'écoute dynamique (inversion canal → relais, retrait, réintégration) | ⬜ |
@@ -55,17 +55,19 @@ des listes → nouveau plan → diff.
 
 ## Lots
 
-### Lot 0 : mise en place de la crate ⬜
+### Lot 0 : mise en place de la crate ✅
 
-- [ ] `Cargo.toml` : `bitchat-envelope` (chemin), `geohash 0.13`, `tokio`, `tokio-tungstenite`
+- [x] `Cargo.toml` : `bitchat-envelope` (chemin), `geohash 0.13`, `tokio`, `tokio-tungstenite`
       (rustls, racines webpki), `rustls` (ring), `futures-util`, `serde`, `serde_json`,
       `thiserror`, `tracing`, `rusqlite` (feature `bundled`), `reqwest` (rustls, pour D5),
       `sha2` (empreintes des listes) ; en dev : `bitchat-envelope` avec
       la feature `mock-ws`, `tracing-subscriber`.
-- [ ] Remplacer le `add()` généré par les modules vides et `error.rs`.
-- [ ] Déplacer le paquet Swift (`Package.swift`, `Sources/`, `Tests/`, `.gitignore`) dans
+- [x] Remplacer le `add()` généré par les modules vides et `error.rs`.
+- [x] Déplacer le paquet Swift (`Package.swift`, `Sources/`, `Tests/`, `.gitignore`) dans
       `swift/`, comme prévu par la spec.
-- [ ] Copier les deux CSV dans `tests/data/` : ils restent figés, tous les tests les utilisent.
+- [x] Copier les deux CSV dans `tests/data/` : ils restent figés, tous les tests les utilisent
+      (`tests/data_frozen.rs` vérifie l'en-tête et le nombre de lignes : 441 iOS, 381 Android).
+- [x] `CHANGELOG.md`, `.gitignore` de la crate (bases SQLite, `.env`).
 
 Fini quand : `cargo build -p bitchat-geohash` et `cargo test -p bitchat-geohash` passent.
 
@@ -237,3 +239,4 @@ Fini quand : critères d'acceptation de la spec vérifiés, sauf ceux qui concer
 | 26/10/2026 | — | Plan initial. |
 | 26/10/2026 | — | Ajouts : retrait des canaux inactifs (5 min) et réintégration explicite, CSV figés en test et rechargés toutes les 24 h, persistance SQLite avec migrations versionnées. D1 à D4 validées. Nouveaux lots 4 (SQLite) et 8 (rechargement), lots renumérotés. |
 | 26/10/2026 | — | D5 et D6 validées. `AGENTS.md` créé. |
+| 26/10/2026 | 0 | Crate en place : dépendances (reqwest 0.13 sans fournisseur crypto embarqué, ring installé au démarrage, cf. lot 8), modules vides, `Error`, constantes, paquet Swift dans `swift/` (`swift build` OK), CSV figés. fmt, tests, clippy `-D warnings` : OK. |

@@ -1,8 +1,11 @@
-.DS_Store
+# SQLite databases (see AGENTS.md: never committed)
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.db
+# Secrets
+.env
+# Left by Swift tooling opened on the crate root; the package is in swift/
 /.build
-/Packages
-xcuserdata/
-DerivedData/
-.swiftpm/configuration/registries.json
-.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
-.netrc
+.DS_Store
