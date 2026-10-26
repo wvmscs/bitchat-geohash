@@ -16,7 +16,7 @@ dépendance par chemin, en lecture seule.
 | 3 | Plan d'écoute dynamique (inversion canal → relais, retrait, réintégration) | ✅ |
 | 4 | Persistance SQLite et migrations | ✅ |
 | 5 | Probe des relais | ✅ |
-| 6 | Agrégation et détection d'inactivité | ⬜ |
+| 6 | Agrégation et détection d'inactivité | ✅ |
 | 7 | Écoute des relais (WebSocket) | ⬜ |
 | 8 | Rechargement des listes de relais toutes les 24 h | ⬜ |
 | 9 | Exemple `watch` et validation sur le réseau réel | ⬜ |
@@ -163,23 +163,28 @@ Tests (`tests/probe.rs`, 9 tests ; serveurs de test dans `tests/common/`) : `WsR
 port fermé → `Dead` ; hôte inconnu → `Dead` ; HTTP 404 → `Dead`, 503 → `Down` ; pas de réponse →
 `Down` ; `CLOSED auth-required:` → `Auth` ; autre `CLOSED` → `Refused` ; challenge AUTH seul → `Ok`.
 
-### Lot 6 : agrégation et détection d'inactivité ⬜
+### Lot 6 : agrégation et détection d'inactivité ✅
 
-- [ ] `Aggregator::observe(Observation { relay, event })` : signature vérifiée
+- [x] `Aggregator::observe(Observation { relay, event }, now)` : signature vérifiée
       (`Event::verify`, D4), kind 20000/20001 uniquement, tag `g` présent dans le plan, sinon
-      rejet compté.
-- [ ] Déduplication par `id` ; mémorisation des relais qui ont livré chaque canal.
-- [ ] Fenêtre glissante (défaut 15 min) sur `created_at`, horloge injectable pour les tests ;
+      rejet compté (`Rejection`, `rejected()`). Signature vérifiée seulement à la première
+      réception d'un id : les copies ne font que noter le relais qui les a livrées.
+- [x] Déduplication par `id` ; mémorisation des relais qui ont livré chaque canal.
+- [x] Fenêtre glissante (défaut 15 min) sur `created_at`, horloge injectable pour les tests ;
       purge des pubkeys et des `id` sortis de la fenêtre (en mémoire seulement).
-- [ ] `snapshot()` → `Vec<CellStats>` (`geohash`, `level`, `messages`, `presences`,
+- [x] `snapshot(now, plan, verdicts)` → `Vec<CellStats>` (`geohash`, `level`, `messages`, `presences`,
       `participants`, `last_seen`, `relays`, `divergence`) : **aucune pubkey dans le type**.
-- [ ] Seuil *k* = 3 au niveau 6 : `participants` remplacé par « faible ».
-- [ ] Somme des enfants pour les mailles parentes (niveau 3 compris), distincte de l'activité propre.
-- [ ] `inactive_since(delay)` (défaut 5 min) : canaux sans événement depuis le délai, compté
-      depuis le dernier événement ou, à défaut, depuis le début de l'observation du canal.
-- [ ] Compteurs par minute transmis au `Store` (`cell_bucket`).
+- [x] Seuil *k* = 3 au niveau 6 : `participants` vaut `None` (« faible »). En base, les
+      compteurs par minute restent bruts (des nombres, sans identifiant).
+- [x] Somme des enfants (`mesh(precision, now)`) pour les mailles parentes (niveau 3 compris), distincte de l'activité propre.
+- [x] `inactive(now)` (délai par défaut 5 min) : canaux sans événement depuis le délai, compté
+      depuis le dernier événement ou, à défaut, depuis le début de l'observation du canal
+      (`watch()` le remet à zéro). Activité = `created_at` plafonné à l'heure de réception :
+      un horodatage dans le futur ne garde pas un canal en vie.
+- [x] Compteurs par minute transmis au `Store` (`drain_buckets(now)`) : minutes complètes
+      seulement, une minute recomptée si un événement en retard y arrive (dans la fenêtre).
 
-Tests : même événement reçu de 3 relais → compté une fois ; signature invalide rejetée ;
+Tests (`tests/aggregate.rs`, 11 tests) : même événement reçu de 3 relais → compté une fois ; signature invalide rejetée ;
 événement d'un canal hors plan rejeté ; sortie de fenêtre ; seuil *k* ; somme des enfants ;
 canal muet 5 min → inactif ; canal réintégré → délai reparti de zéro.
 
@@ -264,3 +269,4 @@ Fini quand : critères d'acceptation de la spec vérifiés, sauf ceux qui concer
 | 26/10/2026 | 3 | `plan.rs` : `ListenPlan`, `Subscription`, `PlanDiff`. `u09` profondeur 2 : 1 056 canaux → 14 relais, plan en 130 ms (release). API publique sans durée de vie explicite (règle FFI d'AGENTS.md). D7 validée, critère de la spec corrigé. |
 | 26/10/2026 | 4 | `store/` : `Store`, `StoreWriter`, migrations (`PRAGMA user_version`), `0001_init.sql`. Les heures sont toujours fournies par l'appelant (horloge injectée). La colonne du CSV s'appelle `csv` pour que le test de vie privée puisse interdire `content`. |
 | 26/10/2026 | 5 | `probe.rs` repris avec `Status`, `probe_relays` (un probe par relais du plan) et l'enregistrement en base. Serveurs de test réutilisables (`tests/common/`) pour le lot 7. |
+| 26/10/2026 | 6 | `aggregate.rs` : `Aggregator`, `CellStats`, `MeshStats`, `Rejection`. Aucune pubkey dans ce qui sort (test sur la sortie `Debug`). Lots 4, 5 et 6 commités séparément. |
