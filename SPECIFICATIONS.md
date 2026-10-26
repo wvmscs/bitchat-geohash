@@ -141,7 +141,8 @@ bitchat-geohash <geohash> [--depth N] [--levels 4,5,6] [--max-cells N] [--window
 ## Critères d'acceptation
 
 * `u09` profondeur 2 (canaux 4c et 5c, 1 056 canaux) : plan d'écoute calculé en moins d'une
-  seconde, nombre de connexions égal au nombre de relais distincts vivants.
+  seconde, une connexion par relais distinct vivant, plus une par tranche de 10 souscriptions
+  au-delà de la première (un relais très chargé peut recevoir plusieurs connexions).
 * Un message envoyé par `geohash_bot` dans un canal observé apparaît sur la carte en moins de
   5 s, dans la bonne cellule et elle seule.
 * Aucune donnée personnelle (pubkey, nickname, contenu) dans les messages envoyés au navigateur.

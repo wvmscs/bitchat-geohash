@@ -13,7 +13,7 @@ dépendance par chemin, en lecture seule.
 | 0 | Mise en place de la crate | ✅ |
 | 1 | Annuaire de relais et sélection par canal | ✅ |
 | 2 | Énumération des canaux | ✅ |
-| 3 | Plan d'écoute dynamique (inversion canal → relais, retrait, réintégration) | ⬜ |
+| 3 | Plan d'écoute dynamique (inversion canal → relais, retrait, réintégration) | ✅ |
 | 4 | Persistance SQLite et migrations | ⬜ |
 | 5 | Probe des relais | ⬜ |
 | 6 | Agrégation et détection d'inactivité | ⬜ |
@@ -101,20 +101,25 @@ Tests (`tests/channels.rs`, 10 tests) : effectifs du tableau de la spec (32, 1 0
 profondeur 2 → 1 056 canaux, départ de niveau 3, `levels` filtrant, niveau 7 explicite,
 entrées invalides.
 
-### Lot 3 : plan d'écoute dynamique ⬜
+### Lot 3 : plan d'écoute dynamique ✅
 
-- [ ] `ListenPlan::build(dir_ios, dir_android, channels)` : sélection par canal, puis
+- [x] `ListenPlan::build(dir_ios, dir_android, channels)` : sélection par canal, puis
       inversion `relais → [canaux]` (ordre déterministe).
-- [ ] Divergence par canal : relais choisis par une seule plateforme.
-- [ ] `filters(relay)` : `{"kinds":[20000,20001], "#g":[…], "since": now-1h}` découpés en
+- [x] Divergence par canal : relais choisis par une seule plateforme.
+- [x] `subscriptions(relay)` / `Subscription::filter(since)` : `{"kinds":[20000,20001], "#g":[…], "since": now-1h}` découpés en
       paquets de 100 canaux, au plus 10 REQ par connexion (D3, paramètres ajustables).
-- [ ] `without_relays(dead)` : retire les relais morts sans les remplacer.
-- [ ] `retire(channels)` / `reinstate(channels)` : un canal retiré sort des filtres ; un relais
+- [x] `drop_relays(dead)` : retire les relais morts sans les remplacer.
+- [x] `retire(channels)` / `reinstate(channels)` / `reinstate_all()` : un canal retiré sort des filtres ; un relais
       sans canal disparaît du plan.
-- [ ] `diff(old, new)` → par relais : à connecter, à déconnecter, REQ à remplacer (même id de
+- [x] `diff(old, new)` → par relais : à connecter, à déconnecter, REQ à remplacer (même id de
       souscription, ce qui remplace le filtre côté relais).
+- [x] Groupes stables : les canaux d'un relais (retirés compris) sont découpés une fois pour
+      toutes en groupes de 100 ; retirer ou réintégrer un canal ne change que la souscription de
+      son groupe (`geoN`), et un groupe vidé est fermé (`CLOSE`).
+- [x] Au-delà de 10 souscriptions, un relais reçoit une connexion de plus
+      (`connections(relay)`, affectation stable par groupe) : voir D7.
 
-Tests : un canal → ses relais ; deux canaux voisins → relais partagés, une seule entrée par
+Tests (`tests/plan.rs`, 11 tests + 1 de chrono) : un canal → ses relais ; deux canaux voisins → relais partagés, une seule entrée par
 relais ; découpage aux bornes ; retrait du dernier canal d'un relais → déconnexion dans le
 diff ; réintégration → retour à l'état initial ; plan de `u09` profondeur 2 calculé en moins
 d'une seconde (en `--release`).
@@ -227,6 +232,7 @@ Fini quand : critères d'acceptation de la spec vérifiés, sauf ceux qui concer
 | D4 | Vérifier les signatures ? | Oui ; à revoir si le lot 9 montre un goulot | ✅ |
 | D5 | Source des listes rechargées toutes les 24 h | Par défaut les URL officielles (`bitchat/relays/online_relays_gps.csv` et `georelays/nostr_relays.csv`), dernier contenu valide gardé en base comme repli ; un chemin local reste possible | ✅ |
 | D6 | Les canaux retirés le restent-ils après un redémarrage ? | Oui (état en base), avec une option `--reinstate-all` au lancement | ✅ |
+| D7 | Un relais avec plus de 1 000 canaux (100 × 10) : `u09` profondeur 2 donne 14 relais mais 22 connexions (8 relais de Paris à 1 042–1 056 canaux, 11 souscriptions chacun). Le critère de la spec « connexions = relais distincts » n'est donc pas tenu | Plusieurs connexions par relais si besoin, au plus 10 souscriptions chacune ; critère de la spec corrigé ; le lot 9 dira si les relais l'acceptent | ✅ |
 
 ## Risques
 
@@ -247,3 +253,4 @@ Fini quand : critères d'acceptation de la spec vérifiés, sauf ceux qui concer
 | 26/10/2026 | 0 | Crate en place : dépendances (reqwest 0.13 sans fournisseur crypto embarqué, ring installé au démarrage, cf. lot 8), modules vides, `Error`, constantes, paquet Swift dans `swift/` (`swift build` OK), CSV figés. fmt, tests, clippy `-D warnings` : OK. |
 | 26/10/2026 | 1 | `directory.rs` et `select.rs` ; sorties identiques à `geohash_map --no-probe` sur 5 canaux (dont égalités iOS et Android). Listes figées : iOS 326 relais (115 doublons), Android 332 (49 doublons), 0 ligne rejetée. Erreur WebSocket mise en `Box` (clippy `result_large_err`). |
 | 26/10/2026 | 2 | `channels.rs` : `Level`, `normalize`, `count`, `enumerate`, `children`. La profondeur compte les niveaux de canal de l'app, observés ou non (depuis `u0`, profondeur 1 = précision 4) ; le filtre `levels` s'applique ensuite. Ordre : niveau le plus grossier d'abord, ordre geohash dans un niveau. |
+| 26/10/2026 | 3 | `plan.rs` : `ListenPlan`, `Subscription`, `PlanDiff`. `u09` profondeur 2 : 1 056 canaux → 14 relais, plan en 130 ms (release). API publique sans durée de vie explicite (règle FFI d'AGENTS.md). D7 validée, critère de la spec corrigé. |
