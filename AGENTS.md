@@ -114,7 +114,7 @@ cargo test -p bitchat-geohash --release -- --ignored                         # t
 cargo run -p bitchat-geohash --example watch -- u09 --depth 2                # real network
 cargo run -p bitchat-geohash --example watch -- u09tvw --depth 0 --no-android \
     --relays-csv own.csv --db own.sqlite --refresh 1s     # one relay only (own.csv lists it)
-cargo run -p bitchat-geohash -- --listen 127.0.0.1:8080                     # map server
+cargo run -p bitchat-geohash -- u09 --listen 127.0.0.1:8080                 # map server (real network)
 ```
 
 `Cargo.lock` is committed for reproducible standalone builds. Inside the local workspace,
@@ -144,7 +144,9 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
   `relays()`, change notifications (`subscribe`).
 - `src/server/` (feature `server`, on by default): axum router; `assets.rs` lists the files
   built into the binary from `src/server/assets/` (page, `app.js`, `app.css`, Leaflet).
-  `model.rs`: the JSON views sent to the browser, SSE messages and deltas.
+  `model.rs`: the JSON views sent to the browser, SSE messages and deltas; `api.rs`: `/api/*`
+  routes and the SSE stream; `guard.rs`: `Host`/`Origin`/`Content-Type` checks and security
+  headers; `mod.rs`: `serve`, `Server`, the task that pushes the deltas.
 - `src/main.rs`: the `bitchat-geohash` binary (`required-features = ["server"]`).
 - `examples/watch.rs`, `tests/`, `tests/data/`, `swift/`.
 
@@ -187,6 +189,8 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
   `assets.rs`. Only the map tiles come from outside.
 - Page text, like logs, is in English. Strings from relays or relay lists go through
   `textContent` (`el()` in `app.js`), never `innerHTML`.
+- Every route goes through `guard.rs`: `Host` checked (DNS rebinding), `POST` only with JSON and
+  the server's own `Origin`, CSP. Keep it that way for new routes; a refusal is logged.
 - What the browser receives obeys invariant 1: counts only. Everything goes through `server::model`,
   built field by field from the library types (no `serde` on them); a new field gets its
   line in the privacy test (`tests/model.rs`). With a k threshold set, a hidden participant count is `"low"`.

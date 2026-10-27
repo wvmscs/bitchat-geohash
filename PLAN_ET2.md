@@ -15,7 +15,7 @@ Règle : seuls les fichiers de `bitchat-geohash/` sont modifiés ; le dépôt re
 | 11 | `Monitor` : ajout de canaux à chaud (descente), relais géolocalisés, notifications | ✅ |
 | 11 bis | Correction de la sélection des relais (une règle par app), report de bitchat-envelope | ✅ |
 | 12 | Modèle exposé au navigateur (JSON) et test de vie privée | ✅ |
-| 13 | Serveur axum : page, état, flux SSE, commandes, protections | ⬜ |
+| 13 | Serveur axum : page, état, flux SSE, commandes, protections | ✅ |
 | 13 bis | TLS optionnel, HTTP/1.1 et HTTP/2 | ⬜ |
 | 14 | Page carte : cellules, échelle, survol, niveaux | ⬜ |
 | 15 | Interaction : descente au clic, réintégration, remontée | ⬜ |
@@ -182,32 +182,50 @@ la cellule modifiée, `removed`, `seq`, `hello` après coup) ; **vie privée** d
 portent un marqueur, ni marqueur, ni pubkey, ni id, ni signature, ni `npub`, ni suite de
 64 caractères hexadécimaux dans `hello` ni dans les deltas.
 
-### Lot 13 : serveur axum ⬜
+### Lot 13 : serveur axum ✅
 
-- [ ] `server::serve(monitor, ServerConfig { listen, tiles, attribution, push_every })` ;
-      arrêt propre (`Server::shutdown`, Ctrl-C dans le binaire).
-- [ ] Routes : `GET /` (page), `GET /assets/*` (types MIME explicites, `Cache-Control`),
-      `GET /api/state` (JSON complet, utile aux tests et au débogage), `GET /api/events`
-      (SSE, `keep-alive` 15 s), `POST /api/descend {geohash}`, `POST /api/reinstate
-      {channels | all}`. Réponses d'erreur JSON avec le code `Error` (ex. `too_many_channels`
-      avec l'effectif).
-- [ ] Diffusion : une tâche lit `subscribe()`, calcule les deltas au plus une fois par
-      `push_every` (défaut 1 s) et les publie sur un `broadcast` vers les flux SSE.
-- [ ] **Protections** (D13) :
-  - écoute sur `127.0.0.1:8080` par défaut ; une adresse non locale exige `--allow-remote`
-    et produit un WARN au démarrage ;
-  - en-tête `Host` vérifié contre l'adresse d'écoute (DNS rebinding) ;
-  - `POST` acceptés seulement avec `Content-Type: application/json` et un `Origin` égal au
-    serveur (une autre page ouverte dans le navigateur ne peut pas commander le moniteur) ;
-  - en-têtes `Content-Security-Policy` (scripts et styles `'self'`, images limitées à l'hôte
-    des tuiles), `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` ;
-  - taille des corps de requête bornée ; nombre de flux SSE simultanés borné (64).
-- [ ] Logs `tracing` : démarrage (adresse), chaque commande reçue (sans en-têtes), refus.
+- [x] `server::serve(monitor, &monitor_config, ServerConfig { listen, allow_remote, tiles,
+      attribution, push_every, keep_alive, max_streams, max_body })` → `Server` ;
+      `Server::shutdown` ferme les flux, attend les requêtes en cours et rend le `Monitor`
+      (toujours actif) ; Ctrl-C dans le binaire.
+- [x] Routes : `GET /` (page), `GET /assets/*`, `GET /api/state` (le `hello` complet),
+      `GET /api/events` (SSE : `event` = type, `id` = `seq`, `keep-alive` 15 s ; un flux en
+      retard est fermé, le navigateur se reconnecte et reçoit un nouveau `hello`),
+      `POST /api/descend {geohash}` → `{"added": [...]}`, `POST /api/reinstate {channels | all}`
+      → `{"reinstated": [...]}`. Erreurs JSON `{"error": code, "message", ...}` :
+      `invalid_geohash` 400, `too_many_channels` 409 (avec `count` et `max`), `outside_area` et
+      `no_finer_level` 422, corps illisible `bad_request` 400/422, `too_large` 413,
+      `monitor_stopped` 503.
+- [x] Diffusion : une tâche suit `subscribe()` et, au plus une fois par `push_every`
+      (défaut 1 s) et seulement si quelque chose a bougé, lit l'état, calcule les deltas
+      (`Published`) et les publie sur un `broadcast` vers les flux SSE. `hello` et
+      l'abonnement sont pris sous le même verrou : aucun delta ne tombe entre les deux.
+- [x] **Protections** (D13) :
+  - écoute sur `127.0.0.1:8080` par défaut ; une adresse non locale exige `allow_remote`
+    (`Error::RemoteListen` sinon) et produit un WARN au démarrage ;
+  - `Host` (ou l'autorité de l'URI en HTTP/2) vérifié : adresse d'écoute, plus `localhost`
+    sur une adresse de bouclage ; sinon 421 (pas de contrôle si l'adresse est `0.0.0.0`) ;
+  - `POST` : `Content-Type: application/json` exigé (sinon 415), `Origin` égal à
+    `http://<Host>` (sinon 403) ;
+  - en-têtes `Content-Security-Policy` (`default-src 'none'`, scripts, styles et connexions
+    `'self'`, images `'self'` et l'hôte des tuiles, `frame-ancestors 'none'`),
+    `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` ;
+  - corps de requête bornés (64 Kio) ; flux SSE simultanés bornés (64, sinon 503
+    `too_many_streams`).
+- [x] Logs `tracing` : démarrage (adresse), chaque commande (sans en-têtes), chaque refus
+      (méthode, chemin, raison).
+- [x] Binaire minimal : `bitchat-geohash <geohash> [--listen] [--allow-remote] [--db]`,
+      listes officielles, monitor + serveur, arrêt sur Ctrl-C. Le reste du CLI au lot 17.
 
-Tests (`tests/server.rs`, `TestRelay` + `reqwest`) : page et ressources servies ; `hello` puis
-delta reçu en moins de 2 s après publication d'un événement ; descente par `POST` → nouvelles
-cellules dans le flux ; `POST` sans `Origin` ou avec un autre `Origin` → 403 ; mauvais
-`Host` → 421 ; corps trop gros → 413 ; arrêt → flux fermés.
+Tests (`tests/server.rs`, 8 nouveaux, `TestRelay` + `reqwest`) : `hello` puis delta de la
+seule cellule touchée reçu en moins de 2 s après publication d'un événement ; descente par
+`POST` → nouvelles cellules dans le flux et dans `/api/state` ; refus expliqués (plafond avec
+l'effectif, geohash invalide, hors zone, corps incomplet) ; réintégration d'un canal puis de
+tous ; `POST` sans `Origin` ou avec un autre → 403, `text/plain` → 415, mauvais `Host` → 421,
+`localhost` accepté, corps trop gros → 413, rien d'exécuté ; en-têtes de sécurité ; 2ᵉ flux au-delà
+de la limite → 503, arrêt → flux fermé et monitor rendu ; adresse non locale sans
+`allow_remote` refusée. Tests unitaires (`guard.rs`) : noms d'hôte acceptés, origine des tuiles
+pour la CSP.
 
 ### Lot 13 bis : TLS optionnel ⬜
 
@@ -371,3 +389,5 @@ Fini quand : tous les critères d'acceptation de la spec sont vérifiés, naviga
 | 27/10/2026 | 11 bis | Sélection des relais corrigée (une règle par app, plus d'ex æquo, `Selected.android: Vec<usize>`, union par serveur) ; D18 (liste iOS en conflit refusée, repli sur la dernière valide, au rechargement la liste courante est gardée) ; D19. Résultats identiques à `geohash_map` corrigé sur `u09tv`, `u0`, `9q8yy`, `gcpvj`, `u1`, `gb`, `9q` ; `9q8yy` passe de 10 à 8 serveurs. 117 tests (113 sans la feature), stables sur 3 lancements ; clippy propre dans les deux configurations. Listes officielles du jour : iOS identique à `tests/data/` (sans conflit) ; `watch u09tv` réel : 8 serveurs, un relais mis de côté (`dead`). |
 | 27/10/2026 | — | Lot 11 bis commité (`98a72e8`). |
 | 27/10/2026 | 12 | `server::model` : vues, `Push` (SSE), `Published` (deltas). D20 validée : tous les chiffres affichés, seuil *k* désactivé par défaut (`k_threshold` 3 → 0, gardé en option ; seuls les participants passent à `"low"` s'il est réglé) ; spec §5 et invariant 1 corrigés. 123 tests (114 sans la feature), stables sur 3 lancements ; clippy propre dans les deux configurations. |
+| 27/10/2026 | — | Lot 12 commité (`2bc7165`). |
+| 27/10/2026 | 13 | `server::serve`, `Server`, routes `/api/*`, SSE, diffusion des deltas, protections D13, binaire minimal (geohash, `--listen`, `--allow-remote`, `--db`). 132 tests (114 sans la feature), stables sur 3 lancements ; clippy propre dans les deux configurations. Essai réel du binaire sur `u09tv` (listes officielles) : 33 cellules, 8 relais dont 1 écarté (certificat), `hello` puis deltas dans le flux, `Host` étranger → 421, Ctrl-C → arrêt propre. |

@@ -26,6 +26,8 @@ pub enum Error {
     },
     #[error("the store writer thread has stopped")]
     StoreClosed,
+    #[error("listening on {0} (not a loopback address) needs allow_remote")]
+    RemoteListen(String),
     #[error("the monitor has stopped")]
     MonitorStopped,
     #[error("relay list {0} has no usable relay")]
