@@ -19,7 +19,7 @@ Règle : seuls les fichiers de `bitchat-geohash/` sont modifiés ; le dépôt re
 | 13 bis | TLS optionnel, HTTP/1.1 et HTTP/2 | ✅ |
 | 14 | Page carte : cellules, échelle, survol, niveaux | ✅ |
 | 15 | Interaction : descente au clic, réintégration, remontée | ✅ |
-| 16 | Calques relais et mailles (somme des enfants) | ⬜ |
+| 16 | Calques relais et mailles (somme des enfants) | ✅ |
 | 17 | CLI `bitchat-geohash` | ⬜ |
 | 18 | Validation sur le réseau réel et dans le navigateur | ⬜ |
 
@@ -343,17 +343,27 @@ remontée par le fil d'Ariane et « (all) », changement d'URL externe appliqué
 erreur. Restent pour le parcours manuel du lot 18 : refus au plafond affiché (le binaire n'a
 pas encore `--max-cells`), réintégration d'une cellule retirée (15 min d'inactivité).
 
-### Lot 16 : calques relais et mailles ⬜
+### Lot 16 : calques relais et mailles ✅
 
-- [ ] Calque « relais » (désactivé par défaut) : position de chaque relais écouté ou écarté,
-      couleur selon le statut (`ok`, `auth`, `refused`, `down`, `dead`, `unprobed`), forme selon
-      la plateforme (les deux apps / une seule), anneau pour les relais aux mêmes coordonnées,
-      comme `geohash_map overlay`. Survol d'une cellule → traits vers ses relais.
-- [ ] Calque « mailles » : somme des enfants (`MeshStats`) au niveau choisi, niveau 3 compris,
-      distincte de l'activité propre du canal ; *k* (s'il est réglé) appliqué comme pour les cellules.
+- [x] Calque « relais » (case « relays », désactivé par défaut) : position de chaque relais
+      du plan, écouté ou écarté, couleur selon le statut (`ok`, `auth`, `refused`, `down`,
+      `dead`, `unprobed`), rond si les deux apps le choisissent, carré si une seule, estompé
+      s'il n'est pas écouté ; anneau pour les relais aux mêmes coordonnées ; fenêtre au clic
+      (adresse, statut, apps, canaux, connexions). Survol d'une cellule → traits vers ses
+      relais, pleins si les deux apps les choisissent, tiretés sinon.
+- [x] Calque « mailles » (liste « sum of the channels inside (meshes) ») : somme des
+      canaux contenus (`MeshStats`) aux niveaux 2 à 6, niveau 3 compris, distincte de
+      l'activité propre du canal ; *k* (s'il est réglé) appliqué comme pour les cellules.
+      Côté serveur : `meshes` dans `hello`, message SSE `meshes` (liste entière des mailles
+      actives quand elle change), `Params.mesh_levels`. L'infobulle prévient que les
+      participants d'une maille sont des clés distinctes (une clé par canal et par personne).
+- [x] Calques et niveau de maille gardés dans l'URL (`&show=meshes`, `&relays=1`).
 
-Tests (`tests/model.rs`) : `RelayView` d'un relais aux coordonnées partagées ; `MeshView` sous
-*k* → `"low"`.
+Tests : `MeshView` sous *k* → `"low"` (lot 12) ; mailles dans `hello` et en delta, envoyées
+entières (`tests/model.rs`), et dans le test de vie privée ; flux réel `meshes` après un
+événement (`tests/server.rs`) ; anneau et regroupement par coordonnées (`ringAnchors`,
+`ringed`), URL (`tests/js/view.test.mjs`). Le cas « relais aux coordonnées partagées » est
+traité côté page (`ringed`), `RelayView` ne change pas.
 
 ### Lot 17 : CLI `bitchat-geohash` ⬜
 
@@ -454,3 +464,5 @@ Fini quand : tous les critères d'acceptation de la spec sont vérifiés, naviga
 | 27/10/2026 | 15 | Remontée ajoutée au menu de la cellule (un bouton par niveau supérieur), à la demande de l'utilisateur. Vérifié dans Chrome headless : bloc → « Up to … level 5 » affiche le niveau 5 cadré sur la ville parente, console propre. |
 | 27/10/2026 | 14 | **Défaut corrigé** (signalé sous Firefox) : tuiles OSM « Access blocked » (403). La page envoie `Referrer-Policy: no-referrer`, que Firefox applique aux tuiles, or la politique d'usage d'OSM exige un `Referer`. Les tuiles seules reçoivent désormais l'origine de la page (option Leaflet `referrerPolicy: strict-origin-when-cross-origin`), jamais le chemin ni le `#level` ; le reste garde `no-referrer`. Vérifié dans Chrome (DevTools) : 12 requêtes de tuiles avec `Referer: http://127.0.0.1:…/`, toutes en 200. |
 | 27/10/2026 | 15 | Demandes de l'utilisateur : (1) remonter recadre la carte (liste des niveaux, URL) ; (2) **aperçu au survol** (D21) : `ListenPlan::remove`, `Aggregator::forget`, `Monitor::preview`, `MonitorConfig::preview_for` (5 min), `MonitorEvent::Removed`, `CellStats.preview` / `CellView.preview`, `POST /api/preview` ; page : survol de 400 ms → aperçu dessiné dans la cellule, résumé dans l'infobulle, niveau vidé par la fin d'un aperçu → niveau plus grossier. 142 tests Rust (118 sans la feature), nouveaux tests stables sur 3 lancements ; 8 tests `node` ; clippy propre. Chrome headless sur `u09t` réel : survol de `#u09th` → 32 canaux en aperçu côté serveur, 32 rectangles dans la cellule, infobulle « listening… » puis « 0 active / 32 … (preview …) », rien après la sortie du pointeur ; liste 6 → 4 : cellule de 32 px à 1 024 px ; console propre. |
+| 27/10/2026 | — | Lot 15 commité (`00a6640`). |
+| 27/10/2026 | 16 | Calques relais (épingles par statut et plateforme, anneau, fenêtre, traits au survol) et mailles (niveaux 2 à 6, `meshes` dans `hello` et en delta, `Params.mesh_levels`, `Push::Hello.params` en `Box` pour clippy). Chrome headless sur `u09` profondeur 2 réel : 13 épingles, 8 traits au survol (6 tiretés : relais d'une seule app), mailles de niveau 4 (13 actives) et 3 (`#u09` : 72 canaux actifs, 222 présences), URL `&show=meshes&relays=1` relue, console propre. Défaut corrigé : infobulle écrasée au bord de la carte (largeur minimale). |

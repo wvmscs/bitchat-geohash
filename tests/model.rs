@@ -298,8 +298,32 @@ async fn nothing_personal_reaches_the_browser() {
         .map(RelayView::from)
         .collect();
     let status = StatusView::from(&monitor.status().await.unwrap());
-    let deltas = published.update(cells, relays, status);
+    let mut deltas = published.update(cells, relays, status);
+    let mut meshes = Vec::new();
+    for precision in MESH_LEVELS {
+        meshes.extend(
+            monitor
+                .mesh(precision)
+                .await
+                .unwrap()
+                .iter()
+                .map(MeshView::from),
+        );
+    }
+    deltas.extend(published.update_meshes(meshes));
     let hello = published.hello();
+    // The u09tv mesh sums its level 6 channel: one person.
+    let mesh = serde_json::to_value(&hello).unwrap()["meshes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["geohash"] == "u09tv")
+        .cloned()
+        .unwrap();
+    assert_eq!(
+        (&mesh["active_channels"], &mesh["participants"]),
+        (&json!(1), &json!(1))
+    );
 
     let tv = serde_json::to_value(&hello).unwrap()["cells"]
         .as_array()
@@ -351,4 +375,37 @@ async fn nothing_personal_reaches_the_browser() {
 
     drop(monitor.shutdown().await.unwrap());
     relay.shutdown().await;
+}
+
+#[test]
+fn meshes_are_sent_whole_when_they_change() {
+    let mut p = Published::new(params());
+    let mesh = |messages| {
+        MeshView::from(&MeshStats {
+            geohash: "u09".into(),
+            active_channels: 2,
+            messages,
+            presences: 1,
+            participants: Some(2),
+        })
+    };
+    assert_eq!(p.update_meshes(vec![]), None);
+    let first = p.update_meshes(vec![mesh(3)]).unwrap();
+    assert_eq!((first.event(), first.seq()), ("meshes", 1));
+    assert_eq!(p.update_meshes(vec![mesh(3)]), None);
+    assert_eq!(
+        p.update_meshes(vec![mesh(4)]),
+        Some(Push::Meshes {
+            seq: 2,
+            meshes: vec![mesh(4)]
+        })
+    );
+    let hello = serde_json::to_value(p.hello()).unwrap();
+    assert_eq!(hello["seq"], 2);
+    assert_eq!(hello["meshes"][0]["level"], 3);
+    assert_eq!(
+        hello["meshes"][0]["bbox"],
+        json!([[47.8125, 1.40625], [49.21875, 2.8125]])
+    );
+    assert_eq!(hello["params"]["mesh_levels"], json!([2, 3, 4, 5, 6]));
 }

@@ -87,3 +87,27 @@ test("cells meeting the view", () => {
   assert.equal(v.cellsMeeting(cells, 4, [[-1, -1], [5, 5]]).length, 2);
   assert.equal(v.cellsMeeting(cells, 4, [[1, 1], [2, 2]]).length, 0);
 });
+
+test("relays at one point go on a ring (lot 16)", () => {
+  const relays = [
+    { url: "a", lat: 48.85, lon: 2.35, ios: true, android: true },
+    { url: "b", lat: 48.85, lon: 2.35, ios: true, android: false },
+    { url: "c", lat: 50.1, lon: 8.6, ios: false, android: true },
+  ];
+  const r = v.ringed(relays);
+  assert.deepEqual(r.map(([x, i, n]) => [x.url, i, n]), [["a", 0, 2], ["b", 1, 2], ["c", 0, 1]]);
+  // Alone: centred on its point; two: opposite sides, same distance.
+  assert.deepEqual(v.ringAnchors(0, 1, 16).iconAnchor, [8, 8]);
+  const [p0, p1] = [v.ringAnchors(0, 2, 16).iconAnchor, v.ringAnchors(1, 2, 16).iconAnchor];
+  assert.ok(Math.abs(p0[0] - 8 + (p1[0] - 8)) < 1e-9 && Math.abs(p0[1] - 8 + (p1[1] - 8)) < 1e-9);
+  assert.equal(Math.round(Math.hypot(p0[0] - 8, p0[1] - 8)), 18);
+  assert.deepEqual(relays.map(v.appsLabel), ["iOS and Android", "iOS only", "Android only"]);
+});
+
+test("URL view with meshes and relays", () => {
+  assert.equal(v.formatHash(5, "messages"), "#level=5&scale=messages");
+  const h = v.formatHash(3, "participants", { show: "meshes", relays: true });
+  assert.equal(h, "#level=3&scale=participants&show=meshes&relays=1");
+  assert.deepEqual(v.parseHash(h), { level: 3, scale: "participants", show: "meshes", relays: true });
+  assert.deepEqual(v.parseHash("#show=x&relays=2"), {});
+});

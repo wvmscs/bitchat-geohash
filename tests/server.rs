@@ -275,6 +275,36 @@ async fn hello_then_a_delta_after_an_event() {
 }
 
 #[tokio::test]
+async fn meshes_follow_the_activity_inside() {
+    let r = Running::start(|_, _| {}).await;
+    let mut sse = SseReader::open(&r.url("/api/events")).await;
+    let (_, _, hello) = sse.next().await.unwrap();
+    assert_eq!(hello["meshes"], json!([]));
+    assert_eq!(hello["params"]["mesh_levels"], json!([2, 3, 4, 5, 6]));
+    r.relay.publish(message("u09tv", r.clock.get()));
+    let (_, d) = sse
+        .until("meshes", |d| {
+            d["meshes"].as_array().is_some_and(|m| m.len() == 3)
+        })
+        .await;
+    // u09tv (level 5) is inside the meshes u0, u09 and u09t; not inside
+    // its own mesh.
+    let names: Vec<(&str, u64)> = d["meshes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| {
+            (
+                m["geohash"].as_str().unwrap(),
+                m["messages"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(names, [("u0", 1), ("u09", 1), ("u09t", 1)]);
+    r.stop().await;
+}
+
+#[tokio::test]
 async fn descent_by_post_reaches_the_stream() {
     let r = Running::start(|_, _| {}).await;
     let mut sse = SseReader::open(&r.url("/api/events")).await;

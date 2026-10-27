@@ -8,6 +8,7 @@
 - Relay choice: each app's own rule (step 2, lot 11 bis, from bitchat-envelope's relay selection corrections). iOS keeps one entry per normalised host (first coordinates) and takes exactly 5 by (distance, host); Android keeps raw lines (`host` and `host:443` are two entries) and takes exactly 5 by distance, stable, so it can pick a server twice. No more ties beyond the 5th slot.
 
 ### Changed
+- `Push::Hello.params` is boxed (same JSON).
 - CSP allows `data:` images (Leaflet's blank tile).
 - `AggregatorConfig::k_threshold` defaults to 0: every count is shown, level 6 included (D20). The threshold stays available as an option.
 - `RelayDirectory::parse(csv, platform)` and `directory::fetch(source, platform)` take the app; header lines are skipped wherever they are (`relay url…`). `normalize_url` strips any scheme except `ws://`.
@@ -15,6 +16,7 @@
 - An iOS list with a host at two coordinates (`RelayDirectory::conflict`, `Error::RelayListConflict`) is rejected as the app does: the last valid list in the database is used, or the current one on reload; with none, it is used with a warning (D18).
 
 ### Added
+- Map layers (step 2, lot 16): relays (pins by status and platform, on a ring when they share coordinates, popup, lines from the hovered cell) and meshes (activity of the channels inside, levels 2 to 6, level 3 included). Server: `meshes` in `hello` and a `meshes` SSE message, `Params.mesh_levels`, `Published::update_meshes`. Both layers kept in the URL.
 - Preview of the level below on hover (D21): `Monitor::preview` listens for a while to the channels of the next level inside a cell, saves nothing, and drops them from the plan `MonitorConfig::preview_for` (5 min) after the latest request unless a descent keeps them; previews give way, oldest first, under `max_channels`. `ListenPlan::remove`, `Aggregator::forget`, `MonitorEvent::Removed`, `CellStats.preview`, `CellView.preview`, `POST /api/preview`. The page asks after 400 ms over a cell, draws the channels below inside it and sums them up in the tooltip.
 - Map page: going up a level from the list or the URL refits the map to the coarser cells in view.
 - Map page interaction: click a watched cell to descend one level (refusals shown, with the real count over the cap), go back up one or several levels from the same menu, click a retired cell to reinstate it, "Reinstate all" with confirmation, breadcrumb to go back up, level and scale kept in the URL (step 2, lot 15).

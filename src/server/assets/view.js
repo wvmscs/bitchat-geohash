@@ -82,19 +82,54 @@ export function ancestors(geohash) {
   return CHANNEL_LEVELS.filter(l => l <= geohash.length).map(l => geohash.slice(0, l));
 }
 
-// `#level=5&scale=messages` -> { level: 5, scale: "messages" }; unknown or
-// bad values are left out.
+// `#level=5&scale=messages&show=meshes&relays=1` -> { level: 5, scale:
+// "messages", show: "meshes", relays: true }; unknown or bad values are left out.
 export function parseHash(hash) {
   const out = {};
   for (const part of hash.replace(/^#/, "").split("&")) {
     const [k, v] = part.split("=");
     if (k === "level" && /^[2-7]$/.test(v || "")) out.level = Number(v);
     if (k === "scale" && (v === "participants" || v === "messages")) out.scale = v;
+    if (k === "show" && (v === "channels" || v === "meshes")) out.show = v;
+    if (k === "relays" && (v === "0" || v === "1")) out.relays = v === "1";
   }
   return out;
 }
 
-export const formatHash = (level, scale) => `#level=${level}&scale=${scale}`;
+// The defaults (channels, no relays) stay out of the URL.
+export const formatHash = (level, scale, { show = "channels", relays = false } = {}) =>
+  `#level=${level}&scale=${scale}` + (show === "meshes" ? "&show=meshes" : "") +
+  (relays ? "&relays=1" : "");
+
+// Relays sharing coordinates (common in the lists) are drawn on a ring of
+// fixed pixel radius around their point, so all stay visible at any zoom.
+// Returns the icon and popup anchors of the `index`-th of `count` pins.
+export function ringAnchors(index, count, size) {
+  const a = 2 * Math.PI * index / count - Math.PI / 2;
+  const radius = count > 1 ? 10 + 4 * count : 0;
+  return {
+    iconAnchor: [size / 2 - radius * Math.cos(a), size / 2 - radius * Math.sin(a)],
+    popupAnchor: [radius * Math.cos(a), radius * Math.sin(a) - size / 2],
+  };
+}
+
+// Relays grouped by coordinates: [[relay, index, count], ...], so that
+// relays at one point go on one ring.
+export function ringed(relays) {
+  const by = new Map();
+  for (const r of relays) {
+    const key = `${r.lat},${r.lon}`;
+    if (!by.has(key)) by.set(key, []);
+    by.get(key).push(r);
+  }
+  const out = [];
+  for (const group of by.values()) group.forEach((r, i) => out.push([r, i, group.length]));
+  return out;
+}
+
+// "iOS and Android", "iOS only", "Android only".
+export const appsLabel = r =>
+  r.ios && r.android ? "iOS and Android" : r.ios ? "iOS only" : "Android only";
 
 // A refusal from the server, in words.
 export function refusalText(body) {

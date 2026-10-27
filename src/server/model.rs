@@ -263,7 +263,13 @@ pub struct Params {
     /// configuration, not from relays).
     pub tiles: String,
     pub attribution: String,
+    /// Mesh precisions summed for the mesh layer (lot 16), 3 included.
+    pub mesh_levels: Vec<usize>,
 }
+
+/// Mesh precisions of the mesh layer: every prefix length that can hold a
+/// longer channel (level 7 is the finest channel).
+pub const MESH_LEVELS: [usize; 5] = [2, 3, 4, 5, 6];
 
 impl Params {
     pub fn new(config: &MonitorConfig, tiles: &str, attribution: &str) -> Self {
@@ -277,6 +283,7 @@ impl Params {
             k: config.aggregator.k_threshold,
             tiles: tiles.to_owned(),
             attribution: attribution.to_owned(),
+            mesh_levels: MESH_LEVELS.to_vec(),
         }
     }
 }
@@ -290,8 +297,11 @@ pub enum Push {
     /// sent: the next message has `seq + 1`.
     Hello {
         seq: u64,
-        params: Params,
+        /// Boxed: the other messages are much smaller.
+        params: Box<Params>,
         cells: Vec<CellView>,
+        /// Active meshes of every precision of [`MESH_LEVELS`].
+        meshes: Vec<MeshView>,
         relays: Vec<RelayView>,
         status: StatusView,
     },
@@ -304,6 +314,12 @@ pub enum Push {
     Removed {
         seq: u64,
         cells: Vec<String>,
+    },
+    /// The whole list of active meshes, when any changed (only active ones
+    /// are listed, so it stays short).
+    Meshes {
+        seq: u64,
+        meshes: Vec<MeshView>,
     },
     /// The whole relay list, when any relay changed.
     Relays {
@@ -323,6 +339,7 @@ impl Push {
             Push::Hello { .. } => "hello",
             Push::Cells { .. } => "cells",
             Push::Removed { .. } => "removed",
+            Push::Meshes { .. } => "meshes",
             Push::Relays { .. } => "relays",
             Push::Status { .. } => "status",
         }
@@ -333,6 +350,7 @@ impl Push {
             Push::Hello { seq, .. }
             | Push::Cells { seq, .. }
             | Push::Removed { seq, .. }
+            | Push::Meshes { seq, .. }
             | Push::Relays { seq, .. }
             | Push::Status { seq, .. } => *seq,
         }
@@ -351,6 +369,7 @@ pub struct Published {
     params: Params,
     seq: u64,
     cells: BTreeMap<String, CellView>,
+    meshes: Vec<MeshView>,
     relays: Vec<RelayView>,
     status: Option<StatusView>,
 }
@@ -361,6 +380,7 @@ impl Published {
             params,
             seq: 0,
             cells: BTreeMap::new(),
+            meshes: Vec::new(),
             relays: Vec::new(),
             status: None,
         }
@@ -375,8 +395,9 @@ impl Published {
     pub fn hello(&self) -> Push {
         Push::Hello {
             seq: self.seq,
-            params: self.params.clone(),
+            params: Box::new(self.params.clone()),
             cells: self.cells.values().cloned().collect(),
+            meshes: self.meshes.clone(),
             relays: self.relays.clone(),
             status: self.status.clone().unwrap_or_default(),
         }
@@ -437,5 +458,18 @@ impl Published {
             self.status = Some(status);
         }
         out
+    }
+
+    /// Records the active meshes; the message to send if they changed.
+    pub fn update_meshes(&mut self, meshes: Vec<MeshView>) -> Option<Push> {
+        if meshes == self.meshes {
+            return None;
+        }
+        self.seq += 1;
+        self.meshes = meshes.clone();
+        Some(Push::Meshes {
+            seq: self.seq,
+            meshes,
+        })
     }
 }

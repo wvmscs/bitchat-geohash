@@ -32,7 +32,7 @@ pub use tls::TlsFiles;
 use crate::error::{Error, Result};
 use crate::monitor::{Monitor, MonitorConfig};
 use api::{AppState, Live};
-use model::{CellView, Params, Published, RelayView, StatusView};
+use model::{CellView, MESH_LEVELS, MeshView, Params, Published, RelayView, StatusView};
 
 /// The routes of the page and its static files.
 pub fn router() -> Router {
@@ -267,9 +267,15 @@ async fn refresh(monitor: &Monitor, live: &Live) -> Result<()> {
         .iter()
         .map(RelayView::from)
         .collect();
+    let mut meshes = Vec::new();
+    for precision in MESH_LEVELS {
+        meshes.extend(monitor.mesh(precision).await?.iter().map(MeshView::from));
+    }
     let status = StatusView::from(&monitor.status().await?);
     let mut published = live.published.lock().expect("not poisoned");
-    for push in published.update(cells, relays, status) {
+    let mut pushes = published.update(cells, relays, status);
+    pushes.extend(published.update_meshes(meshes));
+    for push in pushes {
         // No stream open: nobody to send to.
         let _ = live.tx.send(Arc::new(push));
     }

@@ -206,6 +206,10 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
 - Hovering a watched cell previews the level below (`POST /api/preview`, D21): the page
   draws those channels inside the cell with `interactive: false`, so the hover stays on the
   cell. Going up a level (list or URL) refits the map to the coarser cells in view.
+- Map layers (lot 16): relay pins (`.pin`, colour = status, square = one app, faded = not
+  listened to) on a ring when they share coordinates (`ringed`, `ringAnchors` in `view.js`);
+  meshes (`MeshView`, levels `Params.mesh_levels`) replace the cells when shown. Both are
+  updated in place, so an open tooltip or popup survives a delta.
 - On the map, every rectangle has a fill, transparent when there is no colour: in SVG the
   inside of an unfilled shape takes no hover nor click.
 - Every route goes through `guard.rs`: `Host` checked (DNS rebinding), `POST` only with JSON and

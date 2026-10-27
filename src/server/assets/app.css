@@ -50,6 +50,8 @@ svg.defs { position: absolute; width: 0; height: 0; }
 .tip table.relays th { text-align: left; font-weight: 600; color: var(--muted); padding: 0 6px 2px 0; }
 .tip table.relays td { padding: 1px 6px 1px 0; white-space: nowrap; }
 .tip-below { margin-top: 6px; max-width: 360px; white-space: normal; }
+/* Without it, a tooltip near the map edge shrinks to one word per line. */
+.leaflet-tooltip.cell-tip .tip { min-width: min(260px, calc(100vw - 60px)); }
 .tip td.url { max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 600px) {
   .leaflet-tooltip.cell-tip { font-size: 12px; max-width: calc(100vw - 40px); }
@@ -74,3 +76,9 @@ button:disabled { opacity: .5; cursor: default; }
        border: 2px solid #fff; border-radius: 50%; color: #fff; font: 700 12px/1 system-ui, sans-serif;
        box-shadow: 0 1px 4px rgba(0,0,0,.4); }
 .pin.one { border-radius: 4px; }
+.pin.idle { opacity: .45; }
+#panel .check { display: flex; align-items: center; gap: 2px; font-size: 13px; }
+#panel .key-pin::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 4px;
+                          vertical-align: baseline; background: var(--ok); border-radius: 50%; }
+#panel .key-pin.one::before { border-radius: 2px; }
+#panel .key-pin.idle::before { opacity: .45; }

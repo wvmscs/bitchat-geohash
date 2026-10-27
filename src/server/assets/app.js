@@ -2,12 +2,14 @@
 // updated in place from the server's SSE stream (`hello`, then deltas).
 // Lot 15: click to descend or reinstate, breadcrumb, view kept in the URL.
 // D21: hovering a cell previews the level below (listened to for a while).
+// Lot 16: relay layer (pins, lines from the hovered cell) and mesh layer
+// (activity of the channels inside each mesh).
 // Strings from relays or relay lists only ever go through `textContent`.
 
 import {
-  ago, ancestors, belowSummary, cellsMeeting, childLevel, childrenOf, fillColour, formatHash,
-  levelCounts, levelLabel, maxValue, parseHash, rank, refusalText, rejectedTotal, scaleValue,
-  PALETTE,
+  ago, ancestors, appsLabel, belowSummary, cellsMeeting, childLevel, childrenOf, fillColour,
+  formatHash, levelCounts, levelLabel, maxValue, parseHash, rank, refusalText, rejectedTotal,
+  ringAnchors, ringed, scaleValue, PALETTE,
 } from "./view.js";
 
 const css = getComputedStyle(document.documentElement);
@@ -19,18 +21,6 @@ export function el(tag, cls, text) {
   if (cls) e.className = cls;
   if (text !== undefined) e.textContent = text;
   return e;
-}
-
-// Relays sharing coordinates (common in the lists) are drawn on a ring of
-// fixed pixel radius around their point, so all stay visible at any zoom.
-// Returns the icon and popup anchors of the `index`-th of `count` pins.
-export function ringAnchors(index, count, size) {
-  const a = 2 * Math.PI * index / count - Math.PI / 2;
-  const radius = count > 1 ? 10 + 4 * count : 0;
-  return {
-    iconAnchor: [size / 2 - radius * Math.cos(a), size / 2 - radius * Math.sin(a)],
-    popupAnchor: [radius * Math.cos(a), radius * Math.sin(a) - size / 2],
-  };
 }
 
 // --- State -----------------------------------------------------------------
@@ -49,8 +39,15 @@ const state = {
   home: null,         // level shown before the first descent
   wanted: parseHash(location.hash), // level and scale asked by the URL
   hover: null,        // cell under the pointer, whose level below is shown
+  show: "channels",   // "channels": own activity; "meshes": sum of the channels inside
+  meshes: [],         // active meshes, every precision
+  meshLevel: null,    // mesh precision shown
+  meshMax: 1,
+  showRelays: false,  // relay layer
 };
 if (state.wanted.scale) state.scale = state.wanted.scale;
+if (state.wanted.show) state.show = state.wanted.show;
+if (state.wanted.relays) state.showRelays = true;
 
 // --- Map -------------------------------------------------------------------
 
@@ -114,7 +111,7 @@ function group(level) {
   if (!g) {
     g = L.layerGroup();
     groups.set(level, g);
-    if (level === state.level) g.addTo(map);
+    if (level === state.level && state.show === "channels") g.addTo(map);
   }
   return g;
 }
@@ -165,7 +162,8 @@ function showLevel(level) {
   if (state.level !== null) groups.get(state.level)?.remove();
   state.level = level;
   state.max = -1; // forces a recolour
-  group(level).addTo(map);
+  if (state.show === "channels") group(level).addTo(map);
+  else group(level);
   rescale();
   saveView();
   updatePanel();
@@ -183,9 +181,13 @@ function changeLevel(level) {
   if (inView.length) map.fitBounds(L.latLngBounds(inView.map(c => c.bbox)), { padding: [20, 20] });
 }
 
-// Level and scale in the URL, to share a view between tabs.
+// Level, scale and layers in the URL, to share a view between tabs.
 function saveView() {
-  if (state.level !== null) history.replaceState(null, "", formatHash(state.level, state.scale));
+  const level = state.show === "meshes" ? state.meshLevel : state.level;
+  if (level !== null) {
+    history.replaceState(null, "", formatHash(level, state.scale,
+      { show: state.show, relays: state.showRelays }));
+  }
 }
 
 window.addEventListener("hashchange", () => {
@@ -194,10 +196,221 @@ window.addEventListener("hashchange", () => {
     state.scale = wanted.scale;
     state.max = -1;
     rescale();
+    drawMeshes();
   }
-  if (wanted.level && wanted.level !== state.level) changeLevel(wanted.level);
+  if ((wanted.relays ?? false) !== state.showRelays) setRelays(wanted.relays ?? false);
+  const show = wanted.show || "channels";
+  if (show === "meshes") {
+    if (wanted.level && state.params?.mesh_levels.includes(wanted.level)) state.meshLevel = wanted.level;
+    if (show !== state.show) setShow(show);
+    else drawMeshes();
+  } else {
+    if (show !== state.show) setShow(show);
+    if (wanted.level && wanted.level !== state.level) changeLevel(wanted.level);
+  }
+  saveView();
   updatePanel();
 });
+
+// --- Mesh layer (lot 16) ----------------------------------------------------
+
+// A mesh is a geohash prefix (level 3 included): its rectangle sums the
+// channels inside it, apart from the mesh's own channel.
+const meshLayer = L.layerGroup();
+const meshRects = new Map();   // "level:geohash" -> L.Rectangle
+
+// Switches between the channels' own activity and the meshes.
+function setShow(show) {
+  state.show = show;
+  const cells = state.level !== null ? groups.get(state.level) : null;
+  if (show === "meshes") {
+    cells?.remove();
+    endHover(state.hover);
+    if (state.meshLevel === null) {
+      // The mesh level just above the channels shown.
+      const levels = state.params ? state.params.mesh_levels : [];
+      state.meshLevel = [...levels].reverse().find(l => l < (state.level ?? 99)) ?? levels[0] ?? null;
+    }
+    meshLayer.addTo(map);
+  } else {
+    meshLayer.remove();
+    cells?.addTo(map);
+  }
+  drawMeshes();
+  saveView();
+  updatePanel();
+}
+
+function meshStyle(m, max) {
+  return styleFor({ ...m, watched: true }, max);
+}
+
+// Draws the meshes of the level shown, updating rectangles in place so that
+// an open tooltip stays open.
+function drawMeshes() {
+  const shown = state.show === "meshes"
+    ? state.meshes.filter(m => m.level === state.meshLevel) : [];
+  const max = maxValue(shown, state.scale);
+  state.meshMax = max;
+  const keep = new Set();
+  for (const m of shown) {
+    const key = `${m.level}:${m.geohash}`;
+    keep.add(key);
+    let r = meshRects.get(key);
+    if (!r) {
+      r = L.rectangle(m.bbox, { renderer, ...meshStyle(m, max) });
+      r.bindTooltip(() => meshTip(r.mesh), {
+        sticky: true, direction: "auto", offset: [12, 0], className: "cell-tip",
+      });
+      // The mesh's own channel, if watched, has the usual menu.
+      r.on("click", e => {
+        if (state.cells.has(r.mesh.geohash)) {
+          r.closeTooltip();
+          openMenu(r.mesh.geohash, e.latlng);
+        }
+      });
+      meshRects.set(key, r);
+      meshLayer.addLayer(r);
+    } else {
+      r.setStyle(meshStyle(m, max));
+    }
+    r.mesh = m;
+    if (r.isTooltipOpen()) r.setTooltipContent(meshTip(m));
+  }
+  for (const [key, r] of meshRects) {
+    if (!keep.has(key)) {
+      meshLayer.removeLayer(r);
+      meshRects.delete(key);
+    }
+  }
+}
+
+function meshTip(m) {
+  const box = el("div", "tip");
+  const head = el("div", "tip-head");
+  head.append(el("b", null, "#" + m.geohash), el("span", "muted",
+    ` · mesh, level ${m.level} · channels inside`));
+  box.append(head);
+  const counts = el("div", "tip-counts");
+  for (const [label, value] of [["active channels", m.active_channels], ["messages", m.messages],
+                                ["presences", m.presences], ["participants", m.participants]]) {
+    const item = el("span", "count");
+    item.append(el("b", null, String(value)), el("span", "muted", " " + label));
+    counts.append(item);
+  }
+  box.append(counts);
+  box.append(el("div", "tip-below muted",
+    "Participants are distinct keys: the app signs with one key per channel, so one person " +
+    "writing in two channels counts twice. The mesh's own channel is not included."));
+  return box;
+}
+
+// --- Relay layer (lot 16) ---------------------------------------------------
+
+// One pin per relay of the plan: colour = status, round = chosen by both
+// apps, square = by one app only, faded = not listened to (set aside, or
+// only retired channels). Relays at one point sit on a ring.
+const relayLayer = L.layerGroup();
+const pins = new Map();        // url -> { marker, shape }
+const links = L.layerGroup().addTo(map);
+const PIN = 16;
+
+function relayByUrl(url) {
+  return state.relays.find(r => r.url === url);
+}
+
+function setRelays(on) {
+  state.showRelays = on;
+  if (on) relayLayer.addTo(map);
+  else relayLayer.remove();
+  drawRelays();
+  drawBelow();
+  saveView();
+  updatePanel();
+}
+
+function drawRelays() {
+  if (!state.showRelays) {
+    relayLayer.clearLayers();
+    pins.clear();
+    return;
+  }
+  const keep = new Set();
+  for (const [r, i, n] of ringed(state.relays)) {
+    keep.add(r.url);
+    // Position, place on the ring and shape: a change recreates the pin.
+    const shape = `${r.lat},${r.lon},${i},${n},${r.ios && r.android}`;
+    let pin = pins.get(r.url);
+    if (!pin || pin.shape !== shape) {
+      if (pin) relayLayer.removeLayer(pin.marker);
+      const icon = L.divIcon({
+        className: "pin" + (r.ios && r.android ? "" : " one"),
+        iconSize: [PIN, PIN],
+        ...ringAnchors(i, n, PIN),
+      });
+      const marker = L.marker([r.lat, r.lon], { icon, keyboard: false, riseOnHover: true });
+      const url = r.url;
+      marker.bindTooltip(() => el("span", null, url.replace(/^wss?:\/\//, "")), { direction: "top" });
+      marker.bindPopup(() => relayPopup(relayByUrl(url) || r), { maxWidth: 320 });
+      marker.on("add", () => paintPin(marker, relayByUrl(url) || r));
+      pin = { marker, shape };
+      pins.set(r.url, pin);
+      relayLayer.addLayer(marker);
+    } else {
+      paintPin(pin.marker, r);
+      if (pin.marker.isPopupOpen()) pin.marker.setPopupContent(relayPopup(r));
+    }
+  }
+  for (const [url, pin] of pins) {
+    if (!keep.has(url)) {
+      relayLayer.removeLayer(pin.marker);
+      pins.delete(url);
+    }
+  }
+}
+
+function paintPin(marker, r) {
+  const e = marker.getElement();
+  if (!e) return;
+  e.style.background = colour(r.status || "unprobed");
+  e.classList.toggle("idle", !r.listened);
+}
+
+function relayPopup(r) {
+  const box = el("div", "tip");
+  box.append(el("b", null, r.url));
+  const status = el("div");
+  const dot = el("span", "dot");
+  dot.style.background = colour(r.status || "unprobed");
+  status.append(dot, document.createTextNode(r.status || "unprobed"));
+  box.append(status,
+    el("div", null, `chosen by ${appsLabel(r)} · ${r.channels} watched channels`),
+    el("div", "muted", r.listened ? "listened to" : "not listened to"));
+  r.connections.forEach((c, i) => {
+    const text = c.state === "waiting" ? `waiting, retry in ${c.retry_in_secs} s`
+      : c.state === "abandoned" ? `abandoned${c.auth ? " (AUTH)" : ""}: ${c.reason}` : c.state;
+    box.append(el("div", "muted", `connection ${i + 1}: ${text}`));
+  });
+  return box;
+}
+
+// Lines from the hovered cell to its relays: solid when both apps choose
+// the relay, dashed when only one does.
+function drawLinks() {
+  links.clearLayers();
+  const cell = state.hover && state.cells.get(state.hover);
+  if (!cell || !state.showRelays) return;
+  const centre = L.latLngBounds(cell.bbox).getCenter();
+  for (const cr of cell.relays) {
+    const r = relayByUrl(cr.url);
+    if (!r) continue;
+    const both = cr.ios !== null && cr.android.length > 0;
+    L.polyline([centre, [r.lat, r.lon]], {
+      interactive: false, weight: 2, opacity: 0.8,
+      color: colour(r.status || "unprobed"), dashArray: both ? null : "6 6",
+    }).addTo(links);
+  }
+}
 
 // --- Preview of the level below (D21) --------------------------------------
 
@@ -213,9 +426,10 @@ let hoverTimer = null;
 function startHover(geohash) {
   const cell = state.cells.get(geohash);
   clearTimeout(hoverTimer);
-  if (!cell || !cell.watched || childLevel(cell.level) === null) return;
+  if (!cell) return;
   state.hover = geohash;
   drawBelow();
+  if (!cell.watched || childLevel(cell.level) === null) return;
   hoverTimer = setTimeout(() => {
     if (state.hover !== geohash) return;
     if (Date.now() - (asked.get(geohash) || 0) < ASK_AGAIN) return;
@@ -226,15 +440,18 @@ function startHover(geohash) {
 }
 
 function endHover(geohash) {
-  if (state.hover !== geohash) return;
+  if (!geohash || state.hover !== geohash) return;
   clearTimeout(hoverTimer);
   state.hover = null;
   overlay.clearLayers();
+  links.clearLayers();
 }
 
-// Draws the channels below the hovered cell, and refreshes its tooltip.
+// Draws the channels below the hovered cell and the lines to its relays,
+// and refreshes its tooltip.
 function drawBelow() {
   overlay.clearLayers();
+  drawLinks();
   const g = state.hover;
   if (!g) return;
   const children = childrenOf(state.cells.values(), g);
@@ -461,7 +678,30 @@ function buildPanel() {
   });
   ui.level = el("select");
   ui.level.setAttribute("aria-label", "level shown");
-  ui.level.addEventListener("change", () => changeLevel(Number(ui.level.value)));
+  ui.level.addEventListener("change", () => {
+    if (state.show === "meshes") {
+      state.meshLevel = Number(ui.level.value);
+      drawMeshes();
+      saveView();
+      updatePanel();
+    } else {
+      changeLevel(Number(ui.level.value));
+    }
+  });
+  ui.show = el("select");
+  ui.show.setAttribute("aria-label", "what the rectangles show");
+  for (const [value, label] of [["channels", "each channel's activity"],
+                                ["meshes", "sum of the channels inside (meshes)"]]) {
+    const o = el("option", null, label);
+    o.value = value;
+    ui.show.append(o);
+  }
+  ui.show.addEventListener("change", () => setShow(ui.show.value));
+  ui.relays = el("input");
+  ui.relays.type = "checkbox";
+  ui.relays.addEventListener("change", () => setRelays(ui.relays.checked));
+  const relaysLabel = el("label", "check");
+  relaysLabel.append(ui.relays, document.createTextNode(" relays"));
   ui.scale = el("select");
   ui.scale.setAttribute("aria-label", "colour by");
   for (const s of ["participants", "messages"]) {
@@ -473,11 +713,12 @@ function buildPanel() {
     state.scale = ui.scale.value;
     state.max = -1;
     rescale();
+    drawMeshes();
     saveView();
     updatePanel();
   });
   const controls = el("div", "controls");
-  controls.append(ui.level, ui.scale);
+  controls.append(ui.show, ui.level, ui.scale, relaysLabel);
 
   const legend = el("div", "legend");
   const bar = el("div", "bar");
@@ -488,7 +729,11 @@ function buildPanel() {
   ui.low = el("span", "key low");
   const keys = el("div", "keys muted");
   keys.append(el("span", "key none", "no activity"), el("span", "key retired", "retired"), ui.low);
-  legend.append(bar, ends, keys);
+  ui.relayKeys = el("div", "keys muted");
+  ui.relayKeys.append(el("span", "key-pin both", "both apps"), el("span", "key-pin one", "one app"),
+    el("span", "key-pin idle", "not listened to"),
+    el("span", null, "hover a cell: lines to its relays, dashed for one app"));
+  legend.append(bar, ends, keys, ui.relayKeys);
 
   body.append(ui.crumbs, ui.stats, ui.reinstateAll, controls, legend, el("div", "note muted",
     "Presences are not comparable between levels: the apps send heartbeats at levels 2, 4 and 5 only."));
@@ -516,7 +761,12 @@ function updatePanel() {
   ui.reinstateAll.hidden = !(state.status && state.status.retired > 0);
   updateCrumbs();
 
-  const counts = levelCounts(state.cells.values());
+  const meshes = state.show === "meshes";
+  // Channel levels, finest first, or mesh levels with their active meshes.
+  const counts = meshes
+    ? [...(state.params ? state.params.mesh_levels : [])].reverse()
+      .map(l => [l, state.meshes.filter(m => m.level === l).length])
+    : levelCounts(state.cells.values());
   const options = [...ui.level.options];
   if (options.map(o => Number(o.value)).join() !== counts.map(([l]) => l).join()) {
     ui.level.replaceChildren(...counts.map(([level]) => {
@@ -526,12 +776,19 @@ function updatePanel() {
     }));
   }
   counts.forEach(([level, active, all], i) => {
-    ui.level.options[i].textContent = `${levelLabel(level)}: ${active} active / ${all}`;
+    ui.level.options[i].textContent = meshes
+      ? `meshes of level ${level}: ${active} active`
+      : `${levelLabel(level)}: ${active} active / ${all}`;
   });
-  if (state.level !== null) ui.level.value = String(state.level);
+  const level = meshes ? state.meshLevel : state.level;
+  if (level !== null) ui.level.value = String(level);
   ui.scale.value = state.scale;
+  ui.show.value = state.show;
+  ui.relays.checked = state.showRelays;
+  ui.relayKeys.hidden = !state.showRelays;
 
-  ui.max.textContent = `${Math.max(state.max, 1)} ${state.scale} (log scale)`;
+  const max = meshes ? state.meshMax : state.max;
+  ui.max.textContent = `${Math.max(max, 1)} ${state.scale} (log scale)`;
   const k = state.params ? state.params.k : 0;
   ui.low.hidden = !(k > 0);
   ui.low.textContent = `fewer than ${k} participants`;
@@ -585,6 +842,7 @@ function onHello(d) {
   for (const g of [...state.cells.keys()]) if (!seen.has(g)) remove(g);
   for (const c of d.cells) upsert(c);
   state.relays = d.relays;
+  state.meshes = d.meshes;
   state.status = d.status;
   state.seq = d.seq;
   const levels = levelCounts(d.cells).map(([l]) => l);
@@ -597,6 +855,14 @@ function onHello(d) {
     }
   }
   rescale();
+  if (state.show === "meshes" && state.wanted.level && d.params.mesh_levels.includes(state.wanted.level)
+      && state.meshLevel === null) {
+    state.meshLevel = state.wanted.level;
+  }
+  if (state.show === "meshes" && !map.hasLayer(meshLayer)) setShow("meshes");
+  drawMeshes();
+  if (state.showRelays && !map.hasLayer(relayLayer)) setRelays(true);
+  else drawRelays();
   setLink("live");
   updatePanel();
 }
@@ -641,7 +907,16 @@ function connect() {
     drawBelow();
     updatePanel();
   }));
-  source.addEventListener("relays", e => delta(e, d => { state.relays = d.relays; }));
+  source.addEventListener("relays", e => delta(e, d => {
+    state.relays = d.relays;
+    drawRelays();
+    drawLinks();
+  }));
+  source.addEventListener("meshes", e => delta(e, d => {
+    state.meshes = d.meshes;
+    drawMeshes();
+    updatePanel();
+  }));
   source.addEventListener("status", e => delta(e, d => {
     state.status = d.status;
     updatePanel();
