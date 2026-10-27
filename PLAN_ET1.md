@@ -79,7 +79,8 @@ Fini quand : `cargo build -p bitchat-geohash` et `cargo test -p bitchat-geohash`
       est gardé, la sélection prend son entrée la plus proche (comme `geo.rs`). Coordonnées
       hors bornes rejetées (nouveau par rapport à `geo.rs`).
 - [x] `closest(dir, geohash, count)` : tri par distance puis par hôte, égalités du dernier
-      rang incluses (comportement identique à `geo.rs`).
+      rang incluses (comportement identique à `geo.rs`). **Corrigé au lot 11 bis de l'étape 2**
+      (une règle par app, sans ex æquo ; voir `PLAN_ET2.md`).
 - [x] `select_both(ios, android, geohash)` : union, rang par plateforme.
 - [x] Le CSV est analysé une seule fois, pas à chaque canal.
 - [x] Geohash invalide → `Error::InvalidGeohash` (au lieu d'une liste vide dans `geo.rs`).

@@ -251,7 +251,7 @@ impl Monitor {
         let now = (config.listener.clock)();
         let mut fetched = Vec::new();
         for (platform, source) in sources.each() {
-            fetched.push((platform, source.clone(), fetch(&source).await));
+            fetched.push((platform, source.clone(), fetch(&source, platform).await));
         }
         // Database work off the async threads; logging back here.
         let (store, outcomes) = tokio::task::spawn_blocking(move || {
@@ -260,10 +260,24 @@ impl Monitor {
             for (platform, source, result) in fetched {
                 let outcome = match result {
                     Ok((csv, dir)) => {
-                        let record = load_record(platform, &source, csv, &dir, now);
-                        let sha = record.sha256.clone();
-                        store.apply(&[Write::RelayList(record)])?;
-                        Ok((dir, sha))
+                        let previous = match dir.conflict() {
+                            Some(_) => store.last_relay_list(platform)?,
+                            None => None,
+                        };
+                        match (dir.conflict(), previous) {
+                            // iOS rejects a list with a host at two places and
+                            // keeps its previous one (D18). Without one, the
+                            // list is used, with a warning below.
+                            (Some(host), Some(last)) => {
+                                Err((Error::RelayListConflict(host.to_owned()), Some(last)))
+                            }
+                            _ => {
+                                let record = load_record(platform, &source, csv, &dir, now);
+                                let sha = record.sha256.clone();
+                                store.apply(&[Write::RelayList(record)])?;
+                                Ok((dir, sha))
+                            }
+                        }
                     }
                     Err(e) => Err((e, store.last_relay_list(platform)?)),
                 };
@@ -278,12 +292,27 @@ impl Monitor {
             let (platform_name, source) = (platform.as_str(), source.describe());
             match outcome {
                 Ok((dir, sha)) => {
+                    if let Some(host) = dir.conflict() {
+                        tracing::warn!(platform = platform_name, %source, host, "relay list lists a host at two places: iOS would reject it, but there is no previous one in the database");
+                    }
                     tracing::info!(platform = platform_name, %source, relays = dir.len(), "relay list loaded");
                     loaded.push((platform, dir, sha));
                 }
+                Err((e @ Error::RelayListConflict(_), Some(last))) => {
+                    tracing::warn!(platform = platform_name, %source, error = %e, loaded_at = last.loaded_at, "relay list rejected as iOS does, using the last valid one");
+                    loaded.push((
+                        platform,
+                        RelayDirectory::parse(&last.csv, platform),
+                        last.sha256,
+                    ));
+                }
                 Err((e, Some(last))) => {
                     tracing::warn!(platform = platform_name, %source, error = %e, loaded_at = last.loaded_at, "relay list unavailable, using the last valid one");
-                    loaded.push((platform, RelayDirectory::parse(&last.csv), last.sha256));
+                    loaded.push((
+                        platform,
+                        RelayDirectory::parse(&last.csv, platform),
+                        last.sha256,
+                    ));
                 }
                 Err((e, None)) => {
                     tracing::warn!(platform = platform_name, %source, error = %e, "relay list unavailable, none in the database");
@@ -620,7 +649,17 @@ impl State {
             };
             let mut changed = false;
             for (platform, source) in sources.each() {
-                match fetch(&source).await {
+                match fetch(&source, platform).await {
+                    // iOS keeps its current list over one with a host at two
+                    // places (D18).
+                    Ok((_, dir)) if dir.conflict().is_some() && ios.is_some() => {
+                        let host = dir.conflict().unwrap_or_default().to_owned();
+                        out.failures.push((
+                            platform,
+                            source.describe(),
+                            Error::RelayListConflict(host).to_string(),
+                        ))
+                    }
                     Ok((csv, dir)) => {
                         let record = load_record(platform, &source, csv, &dir, clock());
                         if current.get(&platform) != Some(&record.sha256) {
@@ -851,7 +890,7 @@ impl State {
                         .collect(),
                 });
                 r.ios |= s.ios.is_some();
-                r.android |= s.android.is_some();
+                r.android |= !s.android.is_empty();
                 r.channels += u32::from(watched);
             }
         }

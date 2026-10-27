@@ -30,6 +30,8 @@ pub enum Error {
     MonitorStopped,
     #[error("relay list {0} has no usable relay")]
     EmptyRelayList(String),
+    #[error("host {0:?} is listed at two places: iOS rejects this relay list")]
+    RelayListConflict(String),
     #[error("no relay list available (download failed and none in the database)")]
     NoRelayList,
     #[error("HTTP error: {0}")]

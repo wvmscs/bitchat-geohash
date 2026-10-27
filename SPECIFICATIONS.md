@@ -49,7 +49,11 @@ sur une carte OpenStreetMap.
 * Listes de relais : hors tests, rechargées une fois toutes les 24 h ; le plan est recalculé et
   seules les différences sont appliquées aux connexions. Dans les tests, les CSV sont figés
   (copies dans `tests/data/`) pour la reproductibilité.
-* Pour chaque canal, calculer les relais iOS et Android (`select_both`, égalités comprises).
+* Pour chaque canal, calculer les relais iOS et Android (`select_both`), chacun avec la règle de
+  son app : iOS dédoublonne par hôte normalisé et trie par (distance, hôte) ; Android garde les
+  lignes brutes (`host` et `host:443` distincts) et trie par distance seule, ordre du CSV en cas
+  d'égalité ; 5 relais exactement, sans ex æquo au-delà. Une liste iOS où un hôte figure à deux
+  coordonnées est refusée comme par l'app, au profit de la dernière liste valide (D18 de l'étape 2).
 * Probe des relais une fois au démarrage (`probe.rs`) ; les relais morts sont écartés, pas remplacés.
 * Inverser en `relais → [canaux]`, puis ouvrir **une connexion par relais** avec des filtres
   `{"kinds":[20000,20001], "#g":[…]}`, découpés en paquets (taille de filtre et nombre de

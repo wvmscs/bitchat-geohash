@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 use std::time::Instant;
 
 use bitchat_geohash::channels::{DEFAULT_MAX_CHANNELS, Level, enumerate};
-use bitchat_geohash::directory::RelayDirectory;
+use bitchat_geohash::directory::{Platform, RelayDirectory};
 use bitchat_geohash::plan::{ListenPlan, PlanConfig, RelayChange};
 use bitchat_geohash::select::select_both;
 use serde_json::json;
@@ -13,8 +13,8 @@ const IOS: &str = include_str!("data/online_relays_gps.csv");
 const ANDROID: &str = include_str!("data/nostr_relays.csv");
 
 fn plan_with(channels: &[&str], config: PlanConfig) -> ListenPlan {
-    let ios = RelayDirectory::parse(IOS);
-    let android = RelayDirectory::parse(ANDROID);
+    let ios = RelayDirectory::parse(IOS, Platform::Ios);
+    let android = RelayDirectory::parse(ANDROID, Platform::Android);
     let channels: Vec<String> = channels.iter().map(|c| c.to_string()).collect();
     ListenPlan::build(Some(&ios), Some(&android), &channels, config).unwrap()
 }
@@ -73,8 +73,8 @@ fn every_channel_is_listened_to_on_each_chosen_relay() {
     let channels = enumerate("u09t", 1, &Level::DEFAULT, DEFAULT_MAX_CHANNELS).unwrap();
     let refs: Vec<&str> = channels.iter().map(String::as_str).collect();
     let p = plan_with(&refs, small());
-    let ios = RelayDirectory::parse(IOS);
-    let android = RelayDirectory::parse(ANDROID);
+    let ios = RelayDirectory::parse(IOS, Platform::Ios);
+    let android = RelayDirectory::parse(ANDROID, Platform::Android);
     for c in &channels {
         for s in select_both(Some(&ios), Some(&android), c).unwrap() {
             let subs = p.subscriptions(&s.relay.url);
@@ -227,8 +227,9 @@ fn new_plan_connects_new_relays() {
         .values()
         .filter(|c| matches!(c, RelayChange::Connect(_)))
         .count();
-    assert_eq!(connects, 10);
-    assert_eq!(diff.relays.len(), 10);
+    // The 8 servers of 9q8yy (see tests/select.rs).
+    assert_eq!(connects, 8);
+    assert_eq!(diff.relays.len(), 8);
 }
 
 /// Spec acceptance criterion: plan of `u09`, depth 2, in under a second.
@@ -236,8 +237,8 @@ fn new_plan_connects_new_relays() {
 #[ignore = "timing: run with --release -- --ignored"]
 fn plan_of_u09_depth_2_under_a_second() {
     let start = Instant::now();
-    let ios = RelayDirectory::parse(IOS);
-    let android = RelayDirectory::parse(ANDROID);
+    let ios = RelayDirectory::parse(IOS, Platform::Ios);
+    let android = RelayDirectory::parse(ANDROID, Platform::Android);
     let channels = enumerate("u09", 2, &Level::DEFAULT, DEFAULT_MAX_CHANNELS).unwrap();
     let p =
         ListenPlan::build(Some(&ios), Some(&android), &channels, PlanConfig::default()).unwrap();
@@ -254,8 +255,8 @@ fn strings(v: &[&str]) -> Vec<String> {
 
 #[test]
 fn extend_keeps_the_subscriptions_already_sent() {
-    let ios = RelayDirectory::parse(IOS);
-    let android = RelayDirectory::parse(ANDROID);
+    let ios = RelayDirectory::parse(IOS, Platform::Ios);
+    let android = RelayDirectory::parse(ANDROID, Platform::Android);
     let start = enumerate("u09t", 1, &Level::DEFAULT, DEFAULT_MAX_CHANNELS).unwrap();
     let mut p = ListenPlan::build(Some(&ios), Some(&android), &start, small()).unwrap();
     let before = p.clone();
@@ -295,7 +296,10 @@ fn extend_keeps_the_subscriptions_already_sent() {
 
 #[test]
 fn extend_skips_known_channels_and_fills_the_last_group() {
-    let dir = RelayDirectory::parse("Relay URL,Latitude,Longitude\nwss://a.example,48.85,2.35\n");
+    let dir = RelayDirectory::parse(
+        "Relay URL,Latitude,Longitude\nwss://a.example,48.85,2.35\n",
+        Platform::Ios,
+    );
     let mut p =
         ListenPlan::build(Some(&dir), None, &strings(&["u09tv", "u09tu"]), small()).unwrap();
     let added = p

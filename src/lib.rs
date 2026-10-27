@@ -29,7 +29,7 @@ pub const KIND_GEO_MESSAGE: u32 = 20000;
 /// Location-channel presence heartbeat (ephemeral).
 pub const KIND_GEO_PRESENCE: u32 = 20001;
 /// Relays the app sends location-channel traffic to: the closest to the
-/// channel centre (plus ties for the last slot).
+/// channel centre, per app (Android may count one server twice).
 pub const GEO_RELAY_COUNT: usize = 5;
 
 /// Installs ring as the process-wide rustls crypto provider, needed before

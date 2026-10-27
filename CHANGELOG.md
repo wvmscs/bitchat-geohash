@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fixed
+- Relay choice: each app's own rule (step 2, lot 11 bis, from bitchat-envelope's relay selection corrections). iOS keeps one entry per normalised host (first coordinates) and takes exactly 5 by (distance, host); Android keeps raw lines (`host` and `host:443` are two entries) and takes exactly 5 by distance, stable, so it can pick a server twice. No more ties beyond the 5th slot.
+
+### Changed
+- `RelayDirectory::parse(csv, platform)` and `directory::fetch(source, platform)` take the app; header lines are skipped wherever they are (`relay url…`). `normalize_url` strips any scheme except `ws://`.
+- `Selected.android` and `CellRelay.android` are `Vec<usize>` (0, 1 or 2 ranks).
+- An iOS list with a host at two coordinates (`RelayDirectory::conflict`, `Error::RelayListConflict`) is rejected as the app does: the last valid list in the database is used, or the current one on reload; with none, it is used with a warning (D18).
+
 ### Added
 - `monitor`: channels added while running (`Monitor::descend`, `Monitor::watch_channels`), listened to at once, new relays probed in the background, kept across restarts (migration `0002_channel_origin`, `forget_descents`); `Monitor::relays()` (`RelayInfo`); change notifications (`Monitor::subscribe`, `MonitorEvent`). `ListenPlan::extend`. `watch`: `descend <geohash>`, `--forget-descents` (step 2, lot 11).
 - Feature `server` (default) and the `bitchat-geohash` binary: axum router serving the map page and its built-in files, Leaflet 1.9.4 included (step 2, lot 10).

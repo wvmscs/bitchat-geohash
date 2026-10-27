@@ -11,7 +11,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio_tungstenite::tungstenite::Message;
 
-use bitchat_geohash::directory::RelayDirectory;
+use bitchat_geohash::directory::{Platform, RelayDirectory};
 
 /// A relay list with these URLs, all in the centre of Paris (so they are
 /// the closest relays to every `u09` channel).
@@ -20,7 +20,7 @@ pub fn directory_of(urls: &[String]) -> RelayDirectory {
     for url in urls {
         csv.push_str(&format!("{url},48.8566,2.3522\n"));
     }
-    RelayDirectory::parse(&csv)
+    RelayDirectory::parse(&csv, Platform::Ios)
 }
 
 async fn listener() -> (TcpListener, String) {

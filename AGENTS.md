@@ -131,7 +131,8 @@ Tests run offline: the frozen CSVs from `tests/data/` and the local `TestRelay`
 Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
 
 - `src/nostr.rs`: NIP-01 subset: `Event` (id, Schnorr verification), `Filter`, `unix_now`.
-- `src/directory.rs`: `RelayDirectory`, CSV parsing and normalisation, list sources.
+- `src/directory.rs`: `RelayDirectory`, CSV parsing with each app's rules, normalisation,
+  iOS conflict check, list sources.
 - `src/select.rs`: relay choice per channel (`closest`, `select_both`), from `geo.rs`.
 - `src/channels.rs`: `Level`, channel enumeration.
 - `src/plan.rs`: `ListenPlan` (relay → channels), filters, retire/reinstate, diff.
@@ -155,9 +156,13 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
    tests, when you add fields.
 2. **Read-only on relays.** Never publish an event, never answer NIP-42 AUTH (the app does
    not). `CLOSED auth-required:` marks the relay unusable, without retry.
-3. **Mirror the app's relay choice.** The 5 relays closest to each channel's centre, ties for
-   the last slot included, normalised like the app, iOS list and Android list both. Dead
-   relays are set aside, never replaced by the next one.
+3. **Mirror the app's relay choice.** The 5 relays closest to each channel's centre, with each
+   app's own rule (`RelayDirectory::parse(csv, platform)`, `closest`): iOS keeps one entry per
+   normalised host and sorts by (distance, host); Android keeps raw lines (`host` and
+   `host:443` are two entries) and sorts by distance only, stable. Exactly 5, no tie beyond.
+   iOS list and Android list both; one connection and one probe per server. An iOS list with a
+   host at two coordinates is rejected as the app does (D18). Dead relays are set aside,
+   never replaced by the next one.
 4. **Migrations are append-only.** One numbered file per change, applied in order inside a
    transaction, version in `PRAGMA user_version`. Never edit or reorder a committed migration;
    fix with a new one. Refuse to open a database newer than the code.
@@ -195,7 +200,9 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
 - iOS reads bitchat's reviewed `online_relays_gps.csv`, Android georelays' daily
   `nostr_relays.csv`. The two choices drift apart: always compute both.
 - Relay coordinates come from IP geolocation: many relays share the same point, hence ties.
-  iOS breaks ties by host, Android keeps CSV order.
+  iOS breaks ties by host, Android keeps CSV order. Android does not normalise: it can pick
+  the same server twice (`host` and `host:443`), so `Selected.android` is a list of ranks.
+  Reference: `bitchat-envelope/Documents/relay-selection-corrections.md`.
 
 ## NIP-01 module and test helpers
 

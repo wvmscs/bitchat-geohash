@@ -245,7 +245,7 @@ impl ListenPlan {
         self.selection(channel)
             .unwrap_or_default()
             .iter()
-            .filter(|s| s.ios.is_some() != s.android.is_some())
+            .filter(|s| s.ios.is_some() == s.android.is_empty())
             .cloned()
             .collect()
     }

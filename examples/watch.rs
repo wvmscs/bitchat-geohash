@@ -225,7 +225,7 @@ fn print_plan(status: &MonitorStatus, snapshot: &[CellStats]) {
             let e = relays.entry(&r.url).or_insert((0, false, false, r.status));
             e.0 += 1;
             e.1 |= r.ios.is_some();
-            e.2 |= r.android.is_some();
+            e.2 |= !r.android.is_empty();
         }
     }
     println!(

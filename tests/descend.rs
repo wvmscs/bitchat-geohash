@@ -5,7 +5,7 @@ mod common;
 
 use std::time::Duration;
 
-use bitchat_geohash::directory::RelayDirectory;
+use bitchat_geohash::directory::{Platform, RelayDirectory};
 use bitchat_geohash::monitor::{Monitor, MonitorEvent};
 use bitchat_geohash::nostr::Event;
 use bitchat_geohash::probe::Status;
@@ -233,7 +233,7 @@ fn directory_around(live: &[String], dead: &str) -> RelayDirectory {
         csv.push_str(&format!("{url},{lat},{lon}\n"));
     }
     csv.push_str(&format!("{dead},{dlat},{dlon}\n"));
-    RelayDirectory::parse(&csv)
+    RelayDirectory::parse(&csv, Platform::Ios)
 }
 
 #[tokio::test]

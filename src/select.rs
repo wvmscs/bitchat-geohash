@@ -1,9 +1,7 @@
-//! The apps' relay choice for a channel: closest relays, iOS and Android (lot 1).
-
-use std::collections::HashSet;
+//! The apps' relay choice for a channel: closest relays, iOS and Android (lots 1 and 11 bis).
 
 use crate::GEO_RELAY_COUNT;
-use crate::directory::RelayDirectory;
+use crate::directory::{Platform, RelayDirectory, normalize_url};
 use crate::error::{Error, Result};
 
 /// A relay with its distance to a channel centre.
@@ -15,14 +13,17 @@ pub struct GeoRelay {
     pub km: f64,
 }
 
-/// A relay chosen for a channel by iOS, Android or both.
+/// A server chosen for a channel by iOS, Android or both.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Selected {
+    /// The server (`url` normalised, see [`normalize_url`]); coordinates and
+    /// distance from the iOS list when both apps choose it.
     pub relay: GeoRelay,
-    /// 1-based rank in each platform's choice; above `GEO_RELAY_COUNT` means
-    /// tied for the last slot.
+    /// 1-based rank in the iOS choice (1 to `GEO_RELAY_COUNT`).
     pub ios: Option<usize>,
-    pub android: Option<usize>,
+    /// 1-based ranks in the Android choice: empty, one, or two when the list
+    /// has the server twice (`host` and `host:443`).
+    pub android: Vec<usize>,
 }
 
 /// Centre (lat, lon) of a geohash cell.
@@ -35,11 +36,13 @@ pub fn geohash_center(geohash: &str) -> Result<(f64, f64)> {
     Ok((c.y, c.x))
 }
 
-/// The app's relay choice: the `count` relays nearest to the channel centre.
-/// iOS breaks distance ties by host, Android keeps list order, and lists
-/// have relays with identical coordinates, so the two can disagree on the
-/// last slot. To reach both, the result also includes every relay tied with
-/// the last one.
+/// The app's relay choice: the `count` relays nearest to the channel centre,
+/// with the rule of the app that reads `dir` (no tie beyond `count`).
+///
+/// iOS sorts its one-entry-per-host list by distance, then host. Android
+/// sorts its raw list by distance only, with a stable sort, so ties keep the
+/// list order, and it can pick the same server twice. The URLs are those of
+/// the list ([`DirectoryRelay::url`](crate::directory::DirectoryRelay::url)).
 pub fn closest(dir: &RelayDirectory, geohash: &str, count: usize) -> Result<Vec<GeoRelay>> {
     let (lat, lon) = geohash_center(geohash)?;
     let mut entries: Vec<GeoRelay> = dir
@@ -52,28 +55,21 @@ pub fn closest(dir: &RelayDirectory, geohash: &str, count: usize) -> Result<Vec<
             km: haversine_km(lat, lon, r.lat, r.lon),
         })
         .collect();
-    entries.sort_by(|a, b| a.km.total_cmp(&b.km).then_with(|| a.url.cmp(&b.url)));
-    // A host listed with several coordinates counts once, at its closest.
-    let mut seen = HashSet::new();
-    entries.retain(|r| seen.insert(r.url.clone()));
-    let Some(last) = entries
-        .get(count.saturating_sub(1))
-        .or(entries.last())
-        .map(|r| r.km)
-    else {
-        return Ok(Vec::new());
-    };
-    Ok(entries
-        .into_iter()
-        .enumerate()
-        .take_while(|(i, r)| *i < count || r.km == last)
-        .map(|(_, r)| r)
-        .collect())
+    match dir.platform() {
+        Platform::Ios => {
+            entries.sort_by(|a, b| a.km.total_cmp(&b.km).then_with(|| a.url.cmp(&b.url)))
+        }
+        // `sort_by` is stable, like Kotlin's `sortedBy`.
+        Platform::Android => entries.sort_by(|a, b| a.km.total_cmp(&b.km)),
+    }
+    entries.truncate(count);
+    Ok(entries)
 }
 
-/// Union of the iOS and Android choices for a channel, nearest first. The
-/// two lists drift apart between reviews, so the apps can pick different
-/// relays for the same channel. Either list may be missing.
+/// Union of the iOS and Android choices for a channel, one entry per server,
+/// nearest first. The two lists drift apart between reviews, and the apps
+/// apply different rules, so they can pick different relays for the same
+/// channel. Either list may be missing.
 pub fn select_both(
     ios: Option<&RelayDirectory>,
     android: Option<&RelayDirectory>,
@@ -88,13 +84,15 @@ pub fn select_both(
             .into_iter()
             .enumerate()
         {
-            let at = match out.iter().position(|s| s.relay.url == r.url) {
+            // List entries are valid addresses: normalisation cannot fail.
+            let url = normalize_url(&r.url).unwrap_or_else(|| r.url.clone());
+            let at = match out.iter().position(|s| s.relay.url == url) {
                 Some(at) => at,
                 None => {
                     out.push(Selected {
-                        relay: r,
+                        relay: GeoRelay { url, ..r },
                         ios: None,
-                        android: None,
+                        android: Vec::new(),
                     });
                     out.len() - 1
                 }
@@ -102,7 +100,7 @@ pub fn select_both(
             if is_ios {
                 out[at].ios = Some(i + 1);
             } else {
-                out[at].android = Some(i + 1);
+                out[at].android.push(i + 1);
             }
         }
     }

@@ -1,6 +1,7 @@
-//! Relay lists (`host,lat,lon` CSV): parsing, normalisation and sources (lots 1 and 8).
+//! Relay lists (`host,lat,lon` CSV): parsing with each app's rules,
+//! normalisation and sources (lots 1, 8 and 11 bis).
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 /// Which app reads a relay list: iOS reads bitchat's reviewed
 /// `relays/online_relays_gps.csv`, Android georelays' daily `nostr_relays.csv`.
@@ -24,45 +25,80 @@ impl Platform {
 /// its IPv4 address upstream, hence many relays on the same point).
 #[derive(Debug, Clone, PartialEq)]
 pub struct DirectoryRelay {
-    /// `wss://host`, normalised like the app.
+    /// The address as the app uses it: `wss://host` normalised for iOS, the
+    /// raw text (with `wss://` added when there is no scheme) for Android.
+    /// [`normalize_url`] gives the server it designates.
     pub url: String,
     pub lat: f64,
     pub lon: f64,
 }
 
-/// A parsed relay list. Parse once, then use it for every channel.
-#[derive(Debug, Clone, Default)]
+/// A parsed relay list, read with its app's rules. Parse once, then use it
+/// for every channel.
+#[derive(Debug, Clone)]
 pub struct RelayDirectory {
+    platform: Platform,
     relays: Vec<DirectoryRelay>,
     rejected: usize,
     duplicates: usize,
+    conflict: Option<String>,
 }
 
 impl RelayDirectory {
-    /// Parses a `host,lat,lon` list. The first line is a header and is
-    /// skipped, as the app does. Blank lines are ignored; lines without a
-    /// host or with invalid coordinates are rejected and counted. Entries
-    /// identical after normalisation (`host` and `host:443`, say) are kept
-    /// once and counted. The same host with other coordinates is kept: the
-    /// relay choice then uses its closest entry, as the app does.
-    pub fn parse(csv: &str) -> Self {
-        let mut dir = RelayDirectory::default();
-        let mut seen = HashSet::new();
-        for line in csv.lines().skip(1) {
-            if line.trim().is_empty() {
+    /// Parses a `host,lat,lon` list like `platform`'s app.
+    ///
+    /// Both: blank lines and header lines (starting with `relay url`, any
+    /// case) are skipped; lines without a host, with fewer than 3 fields or
+    /// with invalid coordinates are rejected and counted. Out-of-range
+    /// coordinates are rejected too, although Android accepts them (D19).
+    ///
+    /// iOS keeps one entry per normalised host (`host`, `HOST:443` and
+    /// `wss://host/` are one), with the first coordinates seen; later lines
+    /// are counted as duplicates. A host listed at other coordinates is a
+    /// [`conflict`](Self::conflict): iOS rejects such a list.
+    ///
+    /// Android keeps every line as is: no lowercasing, no `:443` removal, no
+    /// deduplication, so `host` and `host:443` are two entries.
+    pub fn parse(csv: &str, platform: Platform) -> Self {
+        let mut dir = RelayDirectory {
+            platform,
+            relays: Vec::new(),
+            rejected: 0,
+            duplicates: 0,
+            conflict: None,
+        };
+        let mut seen: HashMap<String, (f64, f64)> = HashMap::new();
+        for line in csv.lines().map(str::trim) {
+            if line.is_empty() || line.to_lowercase().starts_with("relay url") {
                 continue;
             }
-            let Some(relay) = parse_line(line) else {
+            let Some(relay) = parse_line(line, platform) else {
                 dir.rejected += 1;
                 continue;
             };
-            if seen.insert((relay.url.clone(), relay.lat.to_bits(), relay.lon.to_bits())) {
-                dir.relays.push(relay);
-            } else {
-                dir.duplicates += 1;
+            if platform == Platform::Ios {
+                match seen.get(&relay.url) {
+                    Some(&at) => {
+                        if at != (relay.lat, relay.lon) && dir.conflict.is_none() {
+                            let host = relay.url.split_once("://").map_or("", |(_, h)| h);
+                            dir.conflict = Some(host.to_owned());
+                        }
+                        dir.duplicates += 1;
+                        continue;
+                    }
+                    None => {
+                        seen.insert(relay.url.clone(), (relay.lat, relay.lon));
+                    }
+                }
             }
+            dir.relays.push(relay);
         }
         dir
+    }
+
+    /// The app whose rules this list was read with.
+    pub fn platform(&self) -> Platform {
+        self.platform
     }
 
     /// Relays in list order.
@@ -75,9 +111,17 @@ impl RelayDirectory {
         self.rejected
     }
 
-    /// Lines dropped as duplicates of an earlier one.
+    /// iOS: lines dropped because their host was already listed. Always 0
+    /// for Android.
     pub fn duplicates(&self) -> usize {
         self.duplicates
+    }
+
+    /// iOS: the first host listed at two different coordinates. The app
+    /// rejects such a list and keeps its previous one (D18). Only this cause
+    /// of rejection is checked. Always `None` for Android.
+    pub fn conflict(&self) -> Option<&str> {
+        self.conflict.as_deref()
     }
 
     pub fn len(&self) -> usize {
@@ -89,20 +133,20 @@ impl RelayDirectory {
     }
 }
 
-/// Normalises a relay host like the app: `host`, `wss://host`, `host/` and
-/// `host:443` are one relay, case-insensitive. Returns `wss://host`.
+/// The server a relay address designates, as iOS keys it: `host`,
+/// `wss://host`, `host/` and `host:443` are one server, case-insensitive.
+/// Returns `wss://host` (`wss://host:port` for another port).
 ///
 /// An explicit `ws://` is kept, for local test relays without TLS: the
 /// published lists never contain one.
 pub fn normalize_url(raw: &str) -> Option<String> {
-    if let Some(rest) = raw.trim().strip_prefix("ws://") {
+    let raw = raw.trim();
+    if let Some(rest) = raw.strip_prefix("ws://") {
         let host = rest.trim_end_matches('/').to_lowercase();
         return (!host.is_empty()).then(|| format!("ws://{host}"));
     }
-    let host = raw
-        .trim()
-        .trim_start_matches("wss://")
-        .trim_end_matches('/');
+    let host = raw.split_once("://").map_or(raw, |(_, rest)| rest);
+    let host = host.trim_end_matches('/');
     let host = host.strip_suffix(":443").unwrap_or(host).to_lowercase();
     if host.is_empty() {
         None
@@ -111,9 +155,22 @@ pub fn normalize_url(raw: &str) -> Option<String> {
     }
 }
 
-fn parse_line(line: &str) -> Option<DirectoryRelay> {
+fn parse_line(line: &str, platform: Platform) -> Option<DirectoryRelay> {
     let mut p = line.split(',').map(str::trim);
-    let url = normalize_url(p.next()?)?;
+    let raw = p.next()?;
+    let url = match platform {
+        Platform::Ios => normalize_url(raw)?,
+        // Android only adds a missing scheme. An empty host is still
+        // rejected: nothing to connect to.
+        Platform::Android => {
+            normalize_url(raw)?;
+            if raw.contains("://") {
+                raw.to_owned()
+            } else {
+                format!("wss://{raw}")
+            }
+        }
+    };
     let lat: f64 = p.next()?.parse().ok()?;
     let lon: f64 = p.next()?.parse().ok()?;
     if !(-90.0..=90.0).contains(&lat) || !(-180.0..=180.0).contains(&lon) {
@@ -170,7 +227,10 @@ pub const FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30
 
 /// Reads a list. A list without any usable relay is an error: it would
 /// leave every channel without relay.
-pub async fn fetch(source: &ListSource) -> crate::Result<(String, RelayDirectory)> {
+pub async fn fetch(
+    source: &ListSource,
+    platform: Platform,
+) -> crate::Result<(String, RelayDirectory)> {
     let csv = match source {
         ListSource::Url(url) => {
             crate::install_crypto_provider();
@@ -190,7 +250,7 @@ pub async fn fetch(source: &ListSource) -> crate::Result<(String, RelayDirectory
                 .map_err(|e| std::io::Error::other(e.to_string()))??
         }
     };
-    let dir = RelayDirectory::parse(&csv);
+    let dir = RelayDirectory::parse(&csv, platform);
     if dir.is_empty() {
         return Err(crate::Error::EmptyRelayList(source.describe()));
     }

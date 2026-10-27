@@ -29,26 +29,28 @@ fn ios_from(url: &str) -> ListSources {
 async fn fetch_reads_paths_and_urls() {
     let path = ListSource::parse("tests/data/online_relays_gps.csv");
     assert!(matches!(path, ListSource::Path(_)));
-    let (_, dir) = fetch(&path).await.unwrap();
+    let (_, dir) = fetch(&path, Platform::Ios).await.unwrap();
     assert_eq!(dir.len(), 326);
 
     let (url, body) = list_server(Some(list_csv(&["ws://127.0.0.1:1"]))).await;
     assert!(matches!(ListSource::parse(&url), ListSource::Url(_)));
-    let (csv, dir) = fetch(&ListSource::parse(&url)).await.unwrap();
+    let (csv, dir) = fetch(&ListSource::parse(&url), Platform::Ios)
+        .await
+        .unwrap();
     assert_eq!((dir.len(), csv), (1, list_csv(&["ws://127.0.0.1:1"])));
 
     *body.lock().unwrap() = None;
     assert!(matches!(
-        fetch(&ListSource::parse(&url)).await,
+        fetch(&ListSource::parse(&url), Platform::Ios).await,
         Err(Error::Http(_))
     ));
     *body.lock().unwrap() = Some("Relay URL,Latitude,Longitude\n".into());
     assert!(matches!(
-        fetch(&ListSource::parse(&url)).await,
+        fetch(&ListSource::parse(&url), Platform::Ios).await,
         Err(Error::EmptyRelayList(_))
     ));
     assert!(matches!(
-        fetch(&ListSource::parse("tests/data/missing.csv")).await,
+        fetch(&ListSource::parse("tests/data/missing.csv"), Platform::Ios).await,
         Err(Error::Io(_))
     ));
 }
@@ -207,6 +209,102 @@ async fn start_falls_back_to_the_last_valid_list() {
         logs.text()
             .contains("relay list unavailable, using the last valid one")
     );
+    drop(monitor.shutdown().await.unwrap());
+}
+
+/// A list with `url` twice, at two places: iOS rejects it (D18).
+fn conflicting_csv(url: &str) -> String {
+    format!("{}{url},10.0,10.0\n", list_csv(&[url]))
+}
+
+#[tokio::test]
+async fn start_rejects_a_conflicting_ios_list_for_the_last_valid_one() {
+    let (logs, _guard) = Logs::capture();
+    let db = TempDb::new("reload-conflict");
+    let (a, _rec_a) = recording_relay(false).await;
+    let (b, rec_b) = recording_relay(false).await;
+    let (url, body) = list_server(Some(list_csv(&[&a]))).await;
+    let clock = TestClock::new();
+    let monitor = Monitor::start_from_sources(
+        config("u09tv", &clock),
+        ios_from(&url),
+        Store::open(&db.0).unwrap(),
+    )
+    .await
+    .unwrap();
+    drop(monitor.shutdown().await.unwrap());
+
+    *body.lock().unwrap() = Some(conflicting_csv(&b));
+    let monitor = Monitor::start_from_sources(
+        config("u09tv", &clock),
+        ios_from(&url),
+        Store::open(&db.0).unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        monitor.status().await.unwrap().relays,
+        std::slice::from_ref(&a)
+    );
+    assert!(logs.text().lines().any(|l| l.contains(" WARN ")
+        && l.contains("relay list rejected as iOS does, using the last valid one")
+        && l.contains("iOS rejects this relay list")));
+    assert_eq!(rec_b.accepted(), 0);
+    // The rejected list is not recorded: it would become the fallback.
+    let store = monitor.shutdown().await.unwrap();
+    let last = store.last_relay_list(Platform::Ios).unwrap().unwrap();
+    assert_eq!(last.csv, list_csv(&[&a]));
+}
+
+#[tokio::test]
+async fn conflicting_ios_list_is_used_without_a_previous_one() {
+    let (logs, _guard) = Logs::capture();
+    let (b, rec_b) = recording_relay(false).await;
+    let (url, _body) = list_server(Some(conflicting_csv(&b))).await;
+    let clock = TestClock::new();
+    let monitor = Monitor::start_from_sources(
+        config("u09tv", &clock),
+        ios_from(&url),
+        Store::open_in_memory().unwrap(),
+    )
+    .await
+    .unwrap();
+    eventually("REQ on B", || !rec_b.frames_of("REQ").is_empty()).await;
+    assert!(
+        logs.text().lines().any(|l| l.contains(" WARN ")
+            && l.contains("iOS would reject it, but there is no previous one"))
+    );
+    drop(monitor.shutdown().await.unwrap());
+}
+
+#[tokio::test]
+async fn reload_keeps_the_current_list_over_a_conflicting_one() {
+    let (logs, _guard) = Logs::capture();
+    let (a, rec_a) = recording_relay(false).await;
+    let (b, rec_b) = recording_relay(false).await;
+    let (url, body) = list_server(Some(list_csv(&[&a]))).await;
+    let clock = TestClock::new();
+    let monitor = Monitor::start_from_sources(
+        reloading(&clock),
+        ios_from(&url),
+        Store::open_in_memory().unwrap(),
+    )
+    .await
+    .unwrap();
+    eventually("REQ on A", || !rec_a.frames_of("REQ").is_empty()).await;
+    *body.lock().unwrap() = Some(conflicting_csv(&b));
+    eventually("WARN", || {
+        logs.text().lines().any(|l| {
+            l.contains("relay list reload failed, keeping the current one")
+                && l.contains("iOS rejects this relay list")
+        })
+    })
+    .await;
+    assert_eq!(
+        monitor.status().await.unwrap().relays,
+        std::slice::from_ref(&a)
+    );
+    assert_eq!(rec_b.accepted(), 0);
     drop(monitor.shutdown().await.unwrap());
 }
 

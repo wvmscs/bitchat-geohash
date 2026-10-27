@@ -65,9 +65,10 @@ pub enum Rejection {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CellRelay {
     pub url: String,
-    /// Rank in each app's choice (above 5: tied for the last slot).
+    /// Rank in the iOS choice.
     pub ios: Option<usize>,
-    pub android: Option<usize>,
+    /// Ranks in the Android choice: two when it picks the server twice.
+    pub android: Vec<usize>,
     /// Probe status; `None` when not probed.
     pub status: Option<Status>,
     /// Whether this relay delivered at least one event of the cell.
@@ -289,7 +290,7 @@ impl Aggregator {
                     .map(|s| CellRelay {
                         url: s.relay.url.clone(),
                         ios: s.ios,
-                        android: s.android,
+                        android: s.android.clone(),
                         status: verdicts.get(&s.relay.url).map(|v| v.status),
                         delivered: cell.delivered.contains(&s.relay.url),
                     })

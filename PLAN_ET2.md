@@ -13,6 +13,7 @@ Règle : seuls les fichiers de `bitchat-geohash/` sont modifiés ; le dépôt re
 |---|---|---|
 | 10 | Mise en place : feature `server`, dépendances, binaire, ressources embarquées | ✅ |
 | 11 | `Monitor` : ajout de canaux à chaud (descente), relais géolocalisés, notifications | ✅ |
+| 11 bis | Correction de la sélection des relais (une règle par app), report de bitchat-envelope | ✅ |
 | 12 | Modèle exposé au navigateur (JSON) et test de vie privée | ⬜ |
 | 13 | Serveur axum : page, état, flux SSE, commandes, protections | ⬜ |
 | 13 bis | TLS optionnel, HTTP/1.1 et HTTP/2 | ⬜ |
@@ -22,7 +23,7 @@ Règle : seuls les fichiers de `bitchat-geohash/` sont modifiés ; le dépôt re
 | 17 | CLI `bitchat-geohash` | ⬜ |
 | 18 | Validation sur le réseau réel et dans le navigateur | ⬜ |
 
-La numérotation continue celle de l'étape 1. Ordre : 10 → 11 → 12 sont côté librairie ;
+La numérotation continue celle de l'étape 1. Ordre : 10 → 11 → 11 bis → 12 sont côté librairie ;
 13 dépend de 12 ; 13 bis dépend de 13 ; 14 dépend de 13 ; 15 et 16 sont indépendants entre eux ; 17 peut démarrer
 dès 13 ; 18 clôt l'étape.
 
@@ -124,11 +125,38 @@ descente ; relais mort choisi seulement après une descente → probé, `Dead`, 
 `RelayInfo` ; abonné lent → `Lagged` ; rechargement des listes → descentes conservées ;
 migration d'une base v1 avec ses canaux.
 
+### Lot 11 bis : sélection des relais, une règle par app ✅
+
+Report de `bitchat-envelope/Documents/relay-selection-corrections.md` (27/10/2026) : la
+sélection appliquait la normalisation d'iOS aux deux listes et ajoutait les ex æquo du
+5ᵉ rang. Les CSV figés de `tests/data/` sont ceux du §6 du document (mêmes SHA-256).
+
+- [x] `RelayDirectory::parse(csv, Platform)` : lecture tolérante commune (lignes vides et
+      `relay url…` sautées, ligne illisible rejetée et comptée, coordonnées hors bornes
+      rejetées : D19) ; iOS : une entrée par hôte normalisé, premières coordonnées gardées ;
+      Android : adresse brute (`wss://` ajouté si absent), ni minuscules ni dédoublonnage.
+- [x] `ios_conflict()` : premier hôte listé à deux coordonnées ; liste iOS en conflit refusée
+      au chargement, repli sur la dernière liste valide en base (D18).
+- [x] `ios_selection` (tri `(km, hôte)`, 5 premiers) et `android_selection` (tri **stable**
+      sur la distance seule, ordre du CSV, 5 premiers) remplacent `closest` ; plus d'ex æquo.
+- [x] `select_both` : union par serveur (`normalize_url`), `Selected.android: Vec<usize>`
+      (0, 1 ou 2 rangs) ; propagation à `divergence`, `CellRelay`, `RelayInfo`, `watch`.
+- [x] Spec (« égalités comprises ») et PLAN_ET1 (lot 1) corrigés.
+
+Tests (`tests/select.rs`) : fixture et 5 cas de C6 ; cellules `u1`, `gb`, `9q` du §4 ;
+322 cellules de niveau 2 où Android n'a que 4 serveurs distincts ; liste iOS en conflit
+refusée avec repli, acceptée avec WARN sans liste précédente.
+
+Le « 322 » du document compte les régions à **moins de 5** serveurs distincts (307 à 4,
+15 à 3), confirmé par un script Python indépendant de notre code. Un hôte présent à deux
+coordonnées dans les deux listes (`relay.earthly.city` sur `9q`) garde celles d'iOS pour
+l'affichage, comme dans bitchat-envelope.
+
 ### Lot 12 : modèle exposé au navigateur ⬜
 
 - [ ] `server::model` : `CellView` (geohash, niveau, bbox `[[s,w],[n,e]]`, `watched`,
       messages, présences, participants ou `"low"`, `last_seen`, relais avec rangs iOS/Android
-      et statut, `delivered`, divergence), `MeshView`, `RelayView`, `StatusView`, `Hello`
+      et statut (Android : liste de rangs), `delivered`, divergence), `MeshView`, `RelayView`, `StatusView`, `Hello`
       (paramètres : fenêtre, *k*, niveaux, départ, URL des tuiles et attribution).
       `CellStats` reste sans `serde` : la conversion est explicite, champ par champ.
 - [ ] Messages SSE : `hello` (état complet à la connexion), `cells` (cellules modifiées
@@ -293,6 +321,8 @@ Fini quand : tous les critères d'acceptation de la spec sont vérifiés, naviga
 | D15 | Clic sur une cellule | Menu : « Descendre » pour une cellule surveillée, « Réintégrer » pour une cellule retirée | ✅ |
 | D16 | Échelle de couleurs | Logarithmique, palette lisible par les daltoniens (type viridis), « faible » hachuré ; choix participants / messages dans la page | ✅ |
 | D17 | TLS ? | Optionnel : certificat et clé fournis (`--tls-cert`, `--tls-key`, ex. `mkcert`), HTTP/1.1 et HTTP/2 par ALPN (`tokio-rustls` + `hyper-util`) ; obligatoire avec `--allow-remote` sauf `--insecure-remote` (WARN) ; certificat autosigné généré (`rcgen`) reporté à l'étape 3 | ✅ |
+| D18 | Liste iOS où un hôte figure à deux coordonnées (l'app la refuse) | Refusée comme l'app : WARN et repli sur la dernière liste valide en base ; acceptée avec WARN s'il n'y en a aucune | ✅ |
+| D19 | Coordonnées hors bornes (Android les accepte) | Ligne rejetée et comptée, comme avant | ✅ |
 
 ## Risques
 
@@ -324,3 +354,5 @@ Fini quand : tous les critères d'acceptation de la spec sont vérifiés, naviga
 | 27/10/2026 | 10 | Feature `server` (par défaut), binaire `bitchat-geohash` (page seule, `--listen`, arrêt sur Ctrl-C), `server::router()` et ressources embarquées (`include_bytes!`). Leaflet 1.9.4 depuis le registre npm, intégrité `sha512-nxS1ynzJ…FA74PA==` conforme ; SHA-256 `leaflet.js` `db49d009…f4e5641a`, `leaflet.css` `a7837102…4d147d04c6`. 96 tests (92 sans la feature) ; clippy propre dans les deux configurations. |
 | 27/10/2026 | 10 | `Cargo.lock` propre au dépôt (227 paquets), tiré du verrou du workspace pour garder les mêmes versions ; copie hors workspace : `cargo test --locked` 96 tests, 92 sans la feature, clippy et build release OK. |
 | 27/10/2026 | 11 | `ListenPlan::extend`, `Monitor::descend` / `watch_channels` / `relays` / `subscribe`, migration `0002_channel_origin`. Probe des nouveaux relais en tâche de fond plutôt qu'avant l'écoute (pas d'attente au clic). 108 tests (104 sans la feature), stables sur 3 lancements. **Boucle fermée** sur `wss://relay.famillevital.club` : `watch u09tv --depth 0`, `descend u09tv` (32 canaux ajoutés sur la connexion ouverte, sans reconnexion), kind 20000 publié par `nak` avec une clé jetable dans `u09tvw` → compté dans `u09tvw` seul. |
+| 27/10/2026 | — | Lot 11 commité (`730dd49`). Nouveau lot 11 bis : report des corrections de sélection de bitchat-envelope. D18 (liste iOS en conflit refusée, repli) et D19 (rejet des coordonnées hors bornes) validées. |
+| 27/10/2026 | 11 bis | Sélection des relais corrigée (une règle par app, plus d'ex æquo, `Selected.android: Vec<usize>`, union par serveur) ; D18 (liste iOS en conflit refusée, repli sur la dernière valide, au rechargement la liste courante est gardée) ; D19. Résultats identiques à `geohash_map` corrigé sur `u09tv`, `u0`, `9q8yy`, `gcpvj`, `u1`, `gb`, `9q` ; `9q8yy` passe de 10 à 8 serveurs. 117 tests (113 sans la feature), stables sur 3 lancements ; clippy propre dans les deux configurations. Listes officielles du jour : iOS identique à `tests/data/` (sans conflit) ; `watch u09tv` réel : 8 serveurs, un relais mis de côté (`dead`). |
