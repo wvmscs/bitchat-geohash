@@ -393,7 +393,7 @@ async fn security_headers() {
     let csp = h["content-security-policy"].to_str().unwrap();
     assert!(csp.contains("script-src 'self'"), "{csp}");
     assert!(
-        csp.contains("img-src 'self' https://tile.openstreetmap.org"),
+        csp.contains("img-src 'self' data: https://tile.openstreetmap.org"),
         "{csp}"
     );
     assert!(csp.contains("frame-ancestors 'none'"), "{csp}");

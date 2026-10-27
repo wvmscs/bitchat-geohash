@@ -89,11 +89,11 @@ fn allowed_hosts(addr: SocketAddr) -> Option<Vec<String>> {
     Some(hosts)
 }
 
-/// Scripts, styles and data from the server only; images from the server
-/// and the tile host.
+/// Scripts, styles and data from the server only; images from the server,
+/// the tile host, and `data:` (Leaflet's blank tile).
 fn csp(tiles: &str) -> String {
     format!(
-        "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' {}; \
+        "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: {}; \
          connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
         tile_origin(tiles)
     )

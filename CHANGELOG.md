@@ -6,12 +6,14 @@
 - Relay choice: each app's own rule (step 2, lot 11 bis, from bitchat-envelope's relay selection corrections). iOS keeps one entry per normalised host (first coordinates) and takes exactly 5 by (distance, host); Android keeps raw lines (`host` and `host:443` are two entries) and takes exactly 5 by distance, stable, so it can pick a server twice. No more ties beyond the 5th slot.
 
 ### Changed
+- CSP allows `data:` images (Leaflet's blank tile).
 - `AggregatorConfig::k_threshold` defaults to 0: every count is shown, level 6 included (D20). The threshold stays available as an option.
 - `RelayDirectory::parse(csv, platform)` and `directory::fetch(source, platform)` take the app; header lines are skipped wherever they are (`relay url…`). `normalize_url` strips any scheme except `ws://`.
 - `Selected.android` and `CellRelay.android` are `Vec<usize>` (0, 1 or 2 ranks).
 - An iOS list with a host at two coordinates (`RelayDirectory::conflict`, `Error::RelayListConflict`) is rejected as the app does: the last valid list in the database is used, or the current one on reload; with none, it is used with a warning (D18).
 
 ### Added
+- Map page: one rectangle per channel coloured by participants or messages (log scale, viridis), one level shown at a time, hover details (counts, relays with ranks and status, divergence), status panel, live updates in place from the SSE stream with automatic resume, "too many tabs" message, light and dark, 360 px. `view.js` (pure helpers, `node --test tests/js/`). Binary: `--depth`, `--tiles`, `--tiles-attribution` (step 2, lot 14).
 - Optional TLS for the server (`ServerConfig::tls`, `TlsFiles`): HTTPS with a given certificate and key, HTTP/2 or HTTP/1.1 by ALPN; `Host` checked against the certificate names; `Error::Tls` for unreadable or mismatched files; a non-local address needs TLS unless `insecure_remote` (`Error::RemoteWithoutTls`). Binary: `--tls-cert`, `--tls-key`, `--insecure-remote`. Frozen test certificates in `tests/data/tls/` (step 2, lot 13 bis).
 - `server::serve` (`ServerConfig`, `Server`): live map server around a running `Monitor`: `/api/state`, `/api/events` (SSE: `hello` then deltas, pushed at most once per second), `POST /api/descend` and `/api/reinstate` with JSON errors; `Host`, `Origin` and `Content-Type` checks, CSP, bounded bodies and streams; loopback only unless `allow_remote` (`Error::RemoteListen`). The binary takes a geohash and serves the live map (step 2, lot 13).
 - `server::model`: what the browser receives: `CellView`, `MeshView`, `RelayView`, `StatusView`, `Params`, SSE messages (`Push`: `hello`, `cells`, `removed`, `relays`, `status`, with a sequence number) and deltas computed once for all browsers (`Published`). A participant count hidden by the k threshold is `"low"` (step 2, lot 12).

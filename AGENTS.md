@@ -112,6 +112,7 @@ cargo test -p bitchat-geohash --no-default-features                          # l
 cargo clippy -p bitchat-geohash --all-targets --all-features -- -D warnings   # must be 0 warnings
 cargo clippy -p bitchat-geohash --all-targets --no-default-features -- -D warnings
 cargo test -p bitchat-geohash --release -- --ignored                         # timing tests (plan build)
+node --test tests/js/view.test.mjs                                          # page helpers (view.js)
 cargo run -p bitchat-geohash --example watch -- u09 --depth 2                # real network
 cargo run -p bitchat-geohash --example watch -- u09tvw --depth 0 --no-android \
     --relays-csv own.csv --db own.sqlite --refresh 1s     # one relay only (own.csv lists it)
@@ -145,7 +146,8 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
 - `src/monitor.rs`: wiring, control loop, 24 h reload; descents (`descend`, `watch_channels`),
   `relays()`, change notifications (`subscribe`).
 - `src/server/` (feature `server`, on by default): axum router; `assets.rs` lists the files
-  built into the binary from `src/server/assets/` (page, `app.js`, `app.css`, Leaflet).
+  built into the binary from `src/server/assets/` (page, `app.js`, `view.js`, `app.css`,
+  Leaflet). `view.js` holds the page's pure helpers (no DOM), tested with node.
   `model.rs`: the JSON views sent to the browser, SSE messages and deltas; `api.rs`: `/api/*`
   routes and the SSE stream; `guard.rs`: `Host`/`Origin`/`Content-Type` checks and security
   headers; `tls.rs`: optional TLS (certificate and key files, ALPN `h2`/`http/1.1`);

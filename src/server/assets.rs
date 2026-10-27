@@ -31,6 +31,7 @@ const PNG: &str = "image/png";
 const ALL: &[Asset] = &[
     asset!("index.html", HTML),
     asset!("app.js", JS),
+    asset!("view.js", JS),
     asset!("app.css", CSS),
     asset!("leaflet/leaflet.js", JS),
     asset!("leaflet/leaflet.css", CSS),

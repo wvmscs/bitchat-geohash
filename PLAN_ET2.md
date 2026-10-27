@@ -17,7 +17,7 @@ Règle : seuls les fichiers de `bitchat-geohash/` sont modifiés ; le dépôt re
 | 12 | Modèle exposé au navigateur (JSON) et test de vie privée | ✅ |
 | 13 | Serveur axum : page, état, flux SSE, commandes, protections | ✅ |
 | 13 bis | TLS optionnel, HTTP/1.1 et HTTP/2 | ✅ |
-| 14 | Page carte : cellules, échelle, survol, niveaux | ⬜ |
+| 14 | Page carte : cellules, échelle, survol, niveaux | ✅ |
 | 15 | Interaction : descente au clic, réintégration, remontée | ⬜ |
 | 16 | Calques relais et mailles (somme des enfants) | ⬜ |
 | 17 | CLI `bitchat-geohash` | ⬜ |
@@ -262,33 +262,46 @@ ALPN `http/1.1` seul → `http/1.1`, `h2` proposé → `h2` et trame `SETTINGS` 
 absent, PEM sans certificat, fichier sans clé, clé discordante → `Error::Tls` explicite ;
 adresse distante sans TLS → `Error::RemoteWithoutTls`.
 
-### Lot 14 : page carte ⬜
+### Lot 14 : page carte ✅
 
-- [ ] `index.html`, `app.js`, `app.css` sans étape de build (JavaScript simple, modules ES).
-- [ ] Tuiles : URL configurable (`--tiles`, défaut `https://tile.openstreetmap.org/{z}/{x}/{y}.png`),
-      attribution toujours affichée (`--tiles-attribution`, défaut OSM).
-- [ ] Un rectangle par canal (bbox fournie par le serveur, pas de décodage geohash en JS),
-      couleur selon l'échelle choisie : participants ou messages (D16) ; « faible » (sous *k*, si un
-      seuil est réglé) hachuré ; canal retiré : contour gris pointillé, sans remplissage ; canal
-      sans activité dans la fenêtre : contour seul.
-- [ ] **Niveaux superposés** : `u09` profondeur 2 affiche 32 cellules 4c et 1 024 cellules 5c
-      au même endroit. Sélecteur de niveau (un niveau visible à la fois, le plus fin par
-      défaut) ; nombre de cellules actives indiqué par niveau.
-- [ ] Survol : infobulle avec le modèle du §3 (compteurs, `last_seen` relatif, relais iOS et
-      Android avec rang et statut, relais ayant livré, divergence). Avertissement fixe :
-      présences non comparables entre niveaux (heartbeats aux précisions 2, 4, 5 seulement).
-- [ ] Bandeau d'état : connexion SSE (vivante, reconnexion), relais écoutés / écartés,
-      connexions ouvertes, canaux surveillés / retirés, rejets.
-- [ ] Mise à jour en place (styles modifiés, pas de recréation des couches) ; reconnexion SSE
-      automatique (`EventSource`, `Last-Event-ID` = numéro de séquence) avec reprise de l'état
-      par `hello`.
-- [ ] Flux SSE qui ne s'ouvre pas (limite de 6 connexions par hôte en HTTP/1.1, D9) : message
-      « too many tabs open on this server: close one, or enable TLS (HTTP/2) ».
-- [ ] Clair et sombre, utilisable à 360 px de large ; textes de la page en anglais, comme
-      les logs.
+- [x] `index.html`, `app.js`, `app.css` sans étape de build (JavaScript simple, modules ES) ;
+      fonctions pures (échelle, libellés, comptes par niveau) dans `view.js`, sans DOM,
+      vérifiées par `node --test tests/js/view.test.mjs`.
+- [x] Tuiles : URL et attribution reçues dans `hello` (`params`), configurables dans le binaire
+      (`--tiles` et `--tiles-attribution`, ensemble ; défaut OSM) ; attribution toujours affichée.
+- [x] Un rectangle par canal (bbox fournie par le serveur), couleur selon l'échelle choisie :
+      participants ou messages, logarithmique de 1 au maximum du niveau affiché, palette
+      viridis (D16) ; « faible » (sous *k*, si un seuil est réglé) hachuré (motif SVG) ; canal
+      retiré : contour gris pointillé, sans remplissage ; canal sans activité : contour seul,
+      discret.
+- [x] **Niveaux superposés** : un niveau visible à la fois (une couche par niveau), le plus fin
+      par défaut ; sélecteur avec, par niveau, cellules actives / toutes.
+- [x] Survol : infobulle (à gauche ou à droite du pointeur selon la place) avec les compteurs,
+      `last_seen` relatif, relais avec rang iOS et rang(s) Android (`#2+3`), statut coloré,
+      livraison, et un avertissement de divergence. Avertissement fixe dans le panneau :
+      présences non comparables entre niveaux.
+- [x] Panneau : flux (vivant, connexion, reconnexion), départ, canaux surveillés / retirés,
+      relais écoutés / écartés, connexions ouvertes, événements non comptés ; construit une
+      fois, seuls textes et options changent (une liste ouverte reste ouverte) ; repliable,
+      replié d'office sous 600 px.
+- [x] Mise à jour en place (`setStyle`, couches jamais recréées ; recoloriage du niveau
+      affiché seulement quand son maximum change) ; reconnexion `EventSource` automatique,
+      reprise complète par `hello`, nouvelle connexion sur un trou de `seq`.
+- [x] Flux qui ne s'ouvre pas (pas de `hello` en 5 s, ou refus 503) : « too many tabs open on
+      this server: close one, or enable TLS (HTTP/2) », nouvel essai toutes les 5 s.
+- [x] Clair et sombre (`prefers-color-scheme`), utilisable à 360 px ; textes en anglais ;
+      icône vide (`data:,`) pour éviter la requête `favicon.ico`.
 
-Fini quand : `u09` profondeur 2 s'affiche en moins de 2 s et reste fluide (1 056 rectangles,
-une mise à jour par seconde).
+Écarts : la CSP autorise `data:` pour les images (image vide de Leaflet pour les tuiles en
+erreur, bloquée sinon). Les tuiles OSM se chargent malgré `Referrer-Policy: no-referrer`.
+
+Vérifié dans Chrome headless piloté par le protocole DevTools (script hors dépôt), sur le
+réseau réel, `u09` profondeur 2 (1 056 canaux) : **1 024 rectangles dessinés en 150 à 410 ms**
+après le chargement, flux « live », infobulle complète, console sans erreur, en clair, en
+sombre et à 360 px. Le `hello` de ce cas pèse 1,3 Mo (relais répétés par cellule) : sans
+gêne en local ; compression ou relais par référence à envisager si la page sert à distance.
+À vérifier à la main au lot 18 : message des 7 onglets en HTTP/1.1, reconnexion après un
+redémarrage du serveur.
 
 ### Lot 15 : interaction ⬜
 
@@ -406,3 +419,5 @@ Fini quand : tous les critères d'acceptation de la spec sont vérifiés, naviga
 | 27/10/2026 | 13 | `server::serve`, `Server`, routes `/api/*`, SSE, diffusion des deltas, protections D13, binaire minimal (geohash, `--listen`, `--allow-remote`, `--db`). 132 tests (114 sans la feature), stables sur 3 lancements ; clippy propre dans les deux configurations. Essai réel du binaire sur `u09tv` (listes officielles) : 33 cellules, 8 relais dont 1 écarté (certificat), `hello` puis deltas dans le flux, `Host` étranger → 421, Ctrl-C → arrêt propre. |
 | 27/10/2026 | — | Lot 13 commité (`825ebc9`). |
 | 27/10/2026 | 13 bis | TLS optionnel (`tokio-rustls` + `hyper-util`, ALPN `h2`/`http/1.1`), `Host` contrôlé par les SAN du certificat, `Error::Tls` et `Error::RemoteWithoutTls`, options `--tls-cert`, `--tls-key`, `--insecure-remote` du binaire. Aucune dépendance ajoutée (reqwest `http2` écarté : il modifiait le verrou du workspace). 137 tests (114 sans la feature), stables sur 3 lancements ; clippy propre ; tout en `--locked`. Essai réel du binaire en HTTPS (certificat de test) : page en HTTP/2 et HTTP/1.1, **8 flux SSE sur une seule connexion TCP** (`curl --http2 -Z`), HTTP en clair sur le port TLS rejeté, Ctrl-C → arrêt propre. |
+| 27/10/2026 | — | Lot 13 bis commité (`cbcdaaa`). |
+| 27/10/2026 | 14 | Page carte : `app.js` (couches par niveau, mise à jour en place, infobulle, panneau, flux SSE et reprise), `view.js` (fonctions pures, test `node`), `app.css` (clair/sombre, 360 px). Binaire : `--depth`, `--tiles`, `--tiles-attribution`. CSP : `data:` autorisé pour les images. 137 tests Rust (114 sans la feature), stables sur 3 lancements ; 3 tests `node`. Chrome headless sur `u09` profondeur 2 réel : 1 024 rectangles en moins de 0,5 s, console propre ; `hello` de 1,3 Mo noté comme risque. |

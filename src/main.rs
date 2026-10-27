@@ -4,9 +4,9 @@
 //! live map, over HTTPS with a certificate and key (`mkcert`). The full
 //! command line comes with lot 17 (see `PLAN_ET2.md`).
 //!
-//!   cargo run -- <geohash> [--listen 127.0.0.1:8080] [--allow-remote] \
+//!   cargo run -- <geohash> [--depth 1] [--listen 127.0.0.1:8080] [--allow-remote] \
 //!       [--tls-cert cert.pem --tls-key key.pem | --insecure-remote] \
-//!       [--db bitchat-geohash.sqlite]
+//!       [--tiles <url> [--tiles-attribution <html>]] [--db bitchat-geohash.sqlite]
 
 use std::net::SocketAddr;
 
@@ -16,8 +16,9 @@ use bitchat_geohash::store::Store;
 
 fn usage() -> ! {
     eprintln!(
-        "usage: bitchat-geohash <geohash> [--listen 127.0.0.1:8080] [--allow-remote] \
-         [--tls-cert cert.pem --tls-key key.pem | --insecure-remote] [--db bitchat-geohash.sqlite]"
+        "usage: bitchat-geohash <geohash> [--depth 1] [--listen 127.0.0.1:8080] [--allow-remote] \
+         [--tls-cert cert.pem --tls-key key.pem | --insecure-remote] \
+         [--tiles <url> [--tiles-attribution <html>]] [--db bitchat-geohash.sqlite]"
     );
     std::process::exit(2)
 }
@@ -35,6 +36,8 @@ async fn main() {
     bitchat_geohash::install_crypto_provider();
 
     let mut start = None;
+    let mut depth = 1;
+    let (mut tiles, mut attribution) = (None, None);
     let mut db = "bitchat-geohash.sqlite".to_owned();
     let mut server = ServerConfig::default();
     let (mut cert, mut key) = (None, None);
@@ -52,6 +55,14 @@ async fn main() {
             "--tls-cert" => cert = Some(args.next().unwrap_or_else(|| usage()).into()),
             "--tls-key" => key = Some(args.next().unwrap_or_else(|| usage()).into()),
             "--db" => db = args.next().unwrap_or_else(|| usage()),
+            "--depth" => {
+                depth = args
+                    .next()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or_else(|| usage())
+            }
+            "--tiles" => tiles = Some(args.next().unwrap_or_else(|| usage())),
+            "--tiles-attribution" => attribution = Some(args.next().unwrap_or_else(|| usage())),
             s if !s.starts_with('-') && start.is_none() => start = Some(s.to_owned()),
             _ => usage(),
         }
@@ -61,7 +72,19 @@ async fn main() {
         (None, None) => None,
         _ => usage(),
     };
-    let config = MonitorConfig::new(&start.unwrap_or_else(|| usage()));
+    // The default attribution is OpenStreetMap's: other tiles need theirs.
+    match (tiles, attribution) {
+        (Some(t), Some(a)) => (server.tiles, server.attribution) = (t, a),
+        (None, None) => {}
+        _ => {
+            eprintln!("--tiles and --tiles-attribution go together (the tile provider's credit)");
+            std::process::exit(2)
+        }
+    }
+    let config = MonitorConfig {
+        depth,
+        ..MonitorConfig::new(&start.unwrap_or_else(|| usage()))
+    };
 
     let store = Store::open(&db).unwrap_or_else(|e| fail(&format!("cannot open {db}"), e));
     let monitor = Monitor::start_from_sources(config.clone(), ListSources::official(), store)

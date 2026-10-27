@@ -1,19 +1,60 @@
 /* Colours and panel taken from bitchat-envelope's map_overlay.html. */
-:root { --bg: #fff; --fg: #1d1d1f; --muted: #6e6e73; --line: #d2d2d7;
+:root { --bg: #fff; --fg: #1d1d1f; --muted: #6e6e73; --line: #8e8e93; --warn: #b85c00;
         --ok: #1a8f3c; --auth: #c77c00; --refused: #b85c00; --down: #e53935; --dead: #6d1b1b; --unprobed: #7a7a7a; }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #1c1c1e; --fg: #f2f2f7; --muted: #a1a1a6; --line: #3a3a3c; }
+  :root { --bg: #1c1c1e; --fg: #f2f2f7; --muted: #a1a1a6; --line: #8e8e93; --warn: #ffb340; }
 }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
              font: 14px/1.4 -apple-system, system-ui, sans-serif; }
 #map { position: absolute; inset: 0; }
-#panel { position: absolute; z-index: 1000; top: 12px; right: 12px; width: min(420px, calc(100% - 24px));
-         max-height: calc(100% - 24px); overflow: auto; box-sizing: border-box; padding: 12px 14px;
+svg.defs { position: absolute; width: 0; height: 0; }
+.muted { color: var(--muted); }
+.warn { color: var(--warn); margin: 6px 0; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px;
+       vertical-align: baseline; background: var(--unprobed); }
+
+/* Panel: top right, foldable, fits a 360 px screen. */
+#panel { position: absolute; z-index: 1000; top: 10px; right: 10px; width: min(360px, calc(100% - 20px));
+         max-height: calc(100% - 20px); overflow: auto; box-sizing: border-box; padding: 10px 12px;
          background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
          box-shadow: 0 4px 16px rgba(0,0,0,.18); }
-#panel h1 { font-size: 16px; margin: 0 0 2px; }
-#panel .sub { color: var(--muted); margin-bottom: 8px; }
-.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+#panel .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#panel h1 { font-size: 15px; margin: 0; }
+#panel .toggle { background: none; border: 0; color: var(--fg); font-size: 16px; cursor: pointer; padding: 0 4px; }
+#panel.folded .body { display: none; }
+#panel .link { margin: 4px 0; }
+#panel .link.live .dot { background: var(--ok); }
+#panel .link.reconnecting .dot, #panel .link.connecting .dot { background: var(--auth); }
+#panel .link.tabs .dot { background: var(--down); }
+#panel .stats { margin: 6px 0; font-size: 13px; }
+#panel .controls { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+#panel select { flex: 1 1 140px; min-width: 0; font: inherit; font-size: 13px; padding: 3px;
+                background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; }
+#panel .legend .bar { height: 10px; border-radius: 3px; }
+#panel .legend .ends { display: flex; justify-content: space-between; font-size: 12px; }
+#panel .keys { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; margin-top: 4px; }
+#panel .key::before { content: ""; display: inline-block; width: 12px; height: 9px; margin-right: 4px;
+                      vertical-align: baseline; border: 1px solid var(--line); }
+#panel .key.retired::before { border-style: dashed; border-color: var(--muted); }
+#panel .key.low::before { border-color: #3e4989;
+  background: repeating-linear-gradient(45deg, #3e4989 0 2px, transparent 2px 5px); }
+#panel .note { font-size: 12px; margin-top: 8px; }
+
+/* Cell tooltip. */
+.leaflet-tooltip.cell-tip { background: var(--bg); color: var(--fg); border-color: var(--line);
+  max-width: min(420px, 90vw); white-space: normal; }
+.tip-head { margin-bottom: 4px; }
+.tip-counts { display: flex; flex-wrap: wrap; gap: 2px 12px; }
+.tip table.relays { border-collapse: collapse; margin-top: 6px; font-size: 12px; }
+.tip table.relays th { text-align: left; font-weight: 600; color: var(--muted); padding: 0 6px 2px 0; }
+.tip table.relays td { padding: 1px 6px 1px 0; white-space: nowrap; }
+.tip td.url { max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 600px) {
+  .leaflet-tooltip.cell-tip { font-size: 12px; max-width: calc(100vw - 40px); }
+  .tip td.url { max-width: 110px; }
+}
+
+/* Relay pins (lot 16). */
 .pin { display: flex; align-items: center; justify-content: center; box-sizing: border-box;
        border: 2px solid #fff; border-radius: 50%; color: #fff; font: 700 12px/1 system-ui, sans-serif;
        box-shadow: 0 1px 4px rgba(0,0,0,.4); }
