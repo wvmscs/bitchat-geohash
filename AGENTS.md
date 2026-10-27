@@ -134,6 +134,8 @@ Tests run offline: the frozen CSVs from `tests/data/` and the local `TestRelay`
 Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
 
 - `src/nostr.rs`: NIP-01 subset: `Event` (id, Schnorr verification), `Filter`, `unix_now`.
+- `src/cli.rs`: command-line options shared by the binary and `watch` (`cli::parse`; each
+  caller reads its own extra options). No argument-parsing dependency.
 - `src/directory.rs`: `RelayDirectory`, CSV parsing with each app's rules, normalisation,
   iOS conflict check, list sources.
 - `src/select.rs`: relay choice per channel (`closest`, `select_both`), from `geo.rs`.
@@ -152,7 +154,9 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
   routes and the SSE stream; `guard.rs`: `Host`/`Origin`/`Content-Type` checks and security
   headers; `tls.rs`: optional TLS (certificate and key files, ALPN `h2`/`http/1.1`);
   `mod.rs`: `serve`, `Server`, the task that pushes the deltas.
-- `src/main.rs`: the `bitchat-geohash` binary (`required-features = ["server"]`).
+- `src/main.rs`: the `bitchat-geohash` binary (`required-features = ["server"]`): server
+  options, start-up summary, `map: <url>` on stderr (read by `tests/cli.rs`), exit codes 2
+  (command line) and 1 (start-up).
 - `examples/watch.rs`, `tests/`, `tests/data/`, `swift/`.
 
 ## Invariants (do not break these)

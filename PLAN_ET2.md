@@ -20,7 +20,7 @@ Règle : seuls les fichiers de `bitchat-geohash/` sont modifiés ; le dépôt re
 | 14 | Page carte : cellules, échelle, survol, niveaux | ✅ |
 | 15 | Interaction : descente au clic, réintégration, remontée | ✅ |
 | 16 | Calques relais et mailles (somme des enfants) | ✅ |
-| 17 | CLI `bitchat-geohash` | ⬜ |
+| 17 | CLI `bitchat-geohash` | ✅ |
 | 18 | Validation sur le réseau réel et dans le navigateur | ⬜ |
 
 La numérotation continue celle de l'étape 1. Ordre : 10 → 11 → 11 bis → 12 sont côté librairie ;
@@ -365,20 +365,25 @@ entières (`tests/model.rs`), et dans le test de vie privée ; flux réel `meshe
 `ringed`), URL (`tests/js/view.test.mjs`). Le cas « relais aux coordonnées partagées » est
 traité côté page (`ringed`), `RelayView` ne change pas.
 
-### Lot 17 : CLI `bitchat-geohash` ⬜
+### Lot 17 : CLI `bitchat-geohash` ✅
 
-- [ ] Options de la spec : `<geohash> [--depth N] [--levels 4,5,6] [--max-cells N]
+- [x] Options de la spec : `<geohash> [--depth N] [--levels 4,5,6] [--max-cells N]
       [--window 15m] [--inactivity 15m] [--relays-csv …] [--android-csv … | --no-android]
       [--no-probe] [--db …] [--reinstate-all] [--forget-descents] [--listen 127.0.0.1:8080]
       [--allow-remote] [--insecure-remote] [--tls-cert <pem>] [--tls-key <pem>] [--tiles <url>] [--tiles-attribution <text>] [--open] [--verbose]`.
-- [ ] Analyse des arguments partagée avec `examples/watch.rs` (module `cli` interne, sans
-      nouvelle dépendance) pour ne pas diverger.
+- [x] Analyse des arguments partagée avec `examples/watch.rs` (module `cli` interne, sans
+      nouvelle dépendance) pour ne pas diverger. `cli::parse` lit les options du moniteur
+      et passe les autres à l'appelant (`--listen`… pour le binaire, `--refresh`,
+      `--duration` pour `watch`) ; messages d'erreur précis (« --depth needs a value »).
 - [x] `--no-drop-dead` de la spec : non retenu (l'invariant 3 l'interdit : un relais mort
       n'est jamais remplacé, et l'écouter quand même ne sert à rien) ; spec corrigée (D14).
-- [ ] Au démarrage : plan et verdicts résumés sur stderr, puis l'URL de la carte ; `--open`
-      lance le navigateur (`open` / `xdg-open`).
-- [ ] Code de sortie non nul et message clair : geohash invalide, plafond, aucune liste,
-      port occupé.
+- [x] Au démarrage : plan et verdicts résumés sur stderr (canaux, relais avec statut, apps
+      et nombre de canaux), puis `map: <url>` ; `--open` lance le navigateur (`open` /
+      `xdg-open`). Journaux sans codes couleur hors terminal.
+- [x] Code de sortie 2 pour une ligne de commande fausse (avec l'usage), 1 sinon, et message
+      dans les termes du CLI : geohash invalide, plafond (« raise --max-cells »), aucune
+      liste (« --relays-csv »), port occupé (vérifié avant les probes : « --listen »),
+      adresse non locale (« --allow-remote »).
 
 Tests : analyse des arguments (unitaires) ; démarrage du binaire sur listes figées et
 `TestRelay`, `GET /api/state` répond (`tests/cli.rs`).
@@ -466,3 +471,4 @@ Fini quand : tous les critères d'acceptation de la spec sont vérifiés, naviga
 | 27/10/2026 | 15 | Demandes de l'utilisateur : (1) remonter recadre la carte (liste des niveaux, URL) ; (2) **aperçu au survol** (D21) : `ListenPlan::remove`, `Aggregator::forget`, `Monitor::preview`, `MonitorConfig::preview_for` (5 min), `MonitorEvent::Removed`, `CellStats.preview` / `CellView.preview`, `POST /api/preview` ; page : survol de 400 ms → aperçu dessiné dans la cellule, résumé dans l'infobulle, niveau vidé par la fin d'un aperçu → niveau plus grossier. 142 tests Rust (118 sans la feature), nouveaux tests stables sur 3 lancements ; 8 tests `node` ; clippy propre. Chrome headless sur `u09t` réel : survol de `#u09th` → 32 canaux en aperçu côté serveur, 32 rectangles dans la cellule, infobulle « listening… » puis « 0 active / 32 … (preview …) », rien après la sortie du pointeur ; liste 6 → 4 : cellule de 32 px à 1 024 px ; console propre. |
 | 27/10/2026 | — | Lot 15 commité (`00a6640`). |
 | 27/10/2026 | 16 | Calques relais (épingles par statut et plateforme, anneau, fenêtre, traits au survol) et mailles (niveaux 2 à 6, `meshes` dans `hello` et en delta, `Params.mesh_levels`, `Push::Hello.params` en `Box` pour clippy). Chrome headless sur `u09` profondeur 2 réel : 13 épingles, 8 traits au survol (6 tiretés : relais d'une seule app), mailles de niveau 4 (13 actives) et 3 (`#u09` : 72 canaux actifs, 222 présences), URL `&show=meshes&relays=1` relue, console propre. Défaut corrigé : infobulle écrasée au bord de la carte (largeur minimale). |
+| 27/10/2026 | 17 | Module `cli` partagé avec `watch`, binaire complet (options de la spec, résumé au démarrage, `--open`, `--verbose`, codes de sortie et messages). `tests/cli.rs` : binaire lancé sur une liste locale et un `TestRelay`, `GET /api/state`, arrêt propre sur SIGINT ; échecs (option inconnue, geohash invalide, plafond, port occupé, adresse non locale, pas de liste). 156 tests Rust (123 sans la feature), stables sur 3 lancements, `--locked` ; 10 tests `node` ; clippy propre. Essai réel `u09tv` : résumé (7 relais écoutés, 1 écarté), port occupé → message et code 1, Ctrl-C → arrêt propre. |

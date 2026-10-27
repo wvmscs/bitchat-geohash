@@ -153,10 +153,16 @@ sur une carte OpenStreetMap.
 
 ```
 bitchat-geohash <geohash> [--depth N] [--levels 4,5,6] [--max-cells N] [--window 15m]
-    [--relays-csv online_relays_gps.csv] [--android-csv nostr_relays.csv]
-    [--no-probe] [--listen 127.0.0.1:8080] [--allow-remote] [--tls-cert <pem> --tls-key <pem>]
-    [--tiles <url>]
+    [--inactivity 15m] [--relays-csv online_relays_gps.csv]
+    [--android-csv nostr_relays.csv | --no-android] [--no-probe] [--db <fichier>]
+    [--reinstate-all] [--forget-descents] [--listen 127.0.0.1:8080] [--allow-remote]
+    [--tls-cert <pem> --tls-key <pem> | --insecure-remote]
+    [--tiles <url> --tiles-attribution <html>] [--open] [--verbose]
 ```
+
+* Au démarrage, résumé sur stderr (canaux, relais et verdicts) puis l'URL de la carte.
+* Code de sortie 2 pour une ligne de commande fausse, 1 si le moniteur ou le serveur ne
+  peut démarrer (geohash invalide, plafond, aucune liste, port occupé), avec un message.
 
 * Les relais morts sont toujours écartés, jamais remplacés : pas d'option pour les garder.
 * Écoute locale (`127.0.0.1`) par défaut ; une autre adresse exige `--allow-remote` et TLS

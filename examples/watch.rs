@@ -21,8 +21,7 @@
 use std::time::{Duration, Instant};
 
 use bitchat_geohash::aggregate::CellStats;
-use bitchat_geohash::channels::Level;
-use bitchat_geohash::directory::ListSource;
+use bitchat_geohash::cli;
 use bitchat_geohash::listener::ConnState;
 use bitchat_geohash::monitor::{ListSources, Monitor, MonitorConfig, MonitorStatus};
 use bitchat_geohash::nostr::unix_now;
@@ -39,79 +38,31 @@ struct Args {
     verbose: bool,
 }
 
-fn usage() -> ! {
-    eprintln!(
-        "usage: watch <geohash> [--depth N] [--levels 2,4,5,6] [--max-cells N] [--window 15m] \
-         [--inactivity 15m] [--relays-csv <url|path>] [--android-csv <url|path> | --no-android] \
-         [--no-probe] [--db <path>] [--reinstate-all] [--forget-descents] [--refresh 5s] \
-         [--duration <d>] [--verbose]"
-    );
-    std::process::exit(2)
-}
-
-/// `90`, `90s`, `5m`, `2h`.
-fn duration(s: &str) -> Duration {
-    let (n, unit) = s.split_at(s.find(|c: char| !c.is_ascii_digit()).unwrap_or(s.len()));
-    let n: u64 = n.parse().unwrap_or_else(|_| usage());
-    Duration::from_secs(match unit {
-        "" | "s" => n,
-        "m" => n * 60,
-        "h" => n * 3600,
-        _ => usage(),
-    })
-}
-
 fn parse_args() -> Args {
-    let mut it = std::env::args().skip(1);
-    let mut start = None;
-    let mut config = MonitorConfig::new("");
-    let mut sources = ListSources::official();
-    let mut db = "bitchat-geohash.sqlite".to_owned();
-    let (mut refresh, mut duration_limit, mut verbose) = (Duration::from_secs(5), None, false);
-    while let Some(arg) = it.next() {
-        let mut value = || it.next().unwrap_or_else(|| usage());
-        match arg.as_str() {
-            "--depth" => config.depth = value().parse().unwrap_or_else(|_| usage()),
-            "--levels" => {
-                config.levels = value()
-                    .split(',')
-                    .map(|p| {
-                        p.trim()
-                            .parse()
-                            .ok()
-                            .and_then(Level::from_precision)
-                            .unwrap_or_else(|| usage())
-                    })
-                    .collect()
-            }
-            "--max-cells" => config.max_channels = value().parse().unwrap_or_else(|_| usage()),
-            "--window" => config.aggregator.window_secs = duration(&value()).as_secs() as i64,
-            "--inactivity" => {
-                config.aggregator.inactivity_secs = duration(&value()).as_secs() as i64
-            }
-            "--relays-csv" => sources.ios = Some(ListSource::parse(&value())),
-            "--android-csv" => sources.android = Some(ListSource::parse(&value())),
-            "--no-android" => sources.android = None,
-            "--no-probe" => config.probe = false,
-            "--db" => db = value(),
-            "--reinstate-all" => config.reinstate_all = true,
-            "--forget-descents" => config.forget_descents = true,
-            "--refresh" => refresh = duration(&value()),
-            "--duration" => duration_limit = Some(duration(&value())),
-            "--verbose" => verbose = true,
-            _ if arg.starts_with("--") => usage(),
-            _ if start.is_none() => start = Some(arg),
-            _ => usage(),
+    // Options shared with the `bitchat-geohash` binary come from `cli`.
+    let (mut refresh, mut duration) = (Duration::from_secs(5), None);
+    let parsed = cli::parse(std::env::args().skip(1), |flag, v| {
+        match flag {
+            "--refresh" => refresh = v.duration()?,
+            "--duration" => duration = Some(v.duration()?),
+            _ => return Ok(false),
         }
-    }
-    config.start = start.unwrap_or_else(|| usage());
+        Ok(true)
+    });
+    let a = parsed.unwrap_or_else(|e| {
+        eprintln!(
+            "{e}\nusage: watch {} [--refresh 5s] [--duration <d>]",
+            cli::MONITOR_USAGE
+        );
+        std::process::exit(2)
+    });
     Args {
-        config,
-        sources,
-        db,
+        config: a.config,
+        sources: a.sources,
+        db: a.db,
         refresh,
-        duration: duration_limit,
-        verbose,
+        duration,
+        verbose: a.verbose,
     }
 }
 

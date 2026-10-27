@@ -10,6 +10,7 @@
 
 pub mod aggregate;
 pub mod channels;
+pub mod cli;
 pub mod directory;
 pub mod error;
 pub mod listener;
