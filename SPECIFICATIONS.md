@@ -136,8 +136,14 @@ sur une carte OpenStreetMap.
 ```
 bitchat-geohash <geohash> [--depth N] [--levels 4,5,6] [--max-cells N] [--window 15m]
     [--relays-csv online_relays_gps.csv] [--android-csv nostr_relays.csv]
-    [--no-probe | --no-drop-dead] [--listen 127.0.0.1:8080] [--tiles <url>]
+    [--no-probe] [--listen 127.0.0.1:8080] [--allow-remote] [--tls-cert <pem> --tls-key <pem>]
+    [--tiles <url>]
 ```
+
+* Les relais morts sont toujours écartés, jamais remplacés : pas d'option pour les garder.
+* Écoute locale (`127.0.0.1`) par défaut ; une autre adresse exige `--allow-remote` et TLS
+  (`--insecure-remote` pour s'en passer, avec avertissement). TLS permet HTTP/2.
+* Détail des options et décisions : [PLAN_ET2.md](PLAN_ET2.md).
 
 ## Critères d'acceptation
 
