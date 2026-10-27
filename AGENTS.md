@@ -139,7 +139,8 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
 - `src/probe.rs`: relay probe, from `probe.rs`.
 - `src/aggregate.rs`: deduplication, window, inactivity, `CellStats`.
 - `src/listener.rs`: one tokio task per relay.
-- `src/monitor.rs`: wiring, control loop, 24 h reload.
+- `src/monitor.rs`: wiring, control loop, 24 h reload; descents (`descend`, `watch_channels`),
+  `relays()`, change notifications (`subscribe`).
 - `src/server/` (feature `server`, on by default): axum router; `assets.rs` lists the files
   built into the binary from `src/server/assets/` (page, `app.js`, `app.css`, Leaflet).
 - `src/main.rs`: the `bitchat-geohash` binary (`required-features = ["server"]`).
@@ -163,6 +164,8 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
 5. **Inactive channels stay retired.** A channel without any event for the inactivity delay
    (default 15 min) leaves the filters, and is reinstated only on explicit request. Every
    retirement and reinstatement is logged at INFO. The state survives a restart.
+   Channels added by a descent survive a restart too (`origin = 'descent'`), unless
+   `forget_descents`.
 6. **Count each event once.** Deduplicate by event `id` across relays; reject bad signatures,
    kinds other than 20000/20001 and `g` tags outside the plan.
 7. **Reproducible tests.** Tests use the frozen CSVs and an injected clock; they never

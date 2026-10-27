@@ -12,7 +12,7 @@ Règle : seuls les fichiers de `bitchat-geohash/` sont modifiés ; le dépôt re
 | Lot | Contenu | État |
 |---|---|---|
 | 10 | Mise en place : feature `server`, dépendances, binaire, ressources embarquées | ✅ |
-| 11 | `Monitor` : ajout de canaux à chaud (descente), relais géolocalisés, notifications | ⬜ |
+| 11 | `Monitor` : ajout de canaux à chaud (descente), relais géolocalisés, notifications | ✅ |
 | 12 | Modèle exposé au navigateur (JSON) et test de vie privée | ⬜ |
 | 13 | Serveur axum : page, état, flux SSE, commandes, protections | ⬜ |
 | 13 bis | TLS optionnel, HTTP/1.1 et HTTP/2 | ⬜ |
@@ -31,6 +31,7 @@ dès 13 ; 18 clôt l'étape.
 ```
 src/
   monitor.rs     + watch_channels(), descend(), relays(), subscribe() (lot 11)
+  store/         + migrations/0002_channel_origin.sql (descentes, D12)
   plan.rs        + ListenPlan::extend() (canaux ajoutés après coup)
   server/        derrière la feature `server`
     mod.rs       serve(monitor, ServerConfig) -> Server { addr(), shutdown() }
@@ -81,32 +82,47 @@ Tests (`tests/server.rs`, 4 tests) : page et ressources servies avec leur type, 
 embarquées, aucune ressource externe dans la page ; chemins inconnus → 404 ; Leaflet
 identique à la version publiée (SHA-256) ; aucune ressource vide.
 
-### Lot 11 : `Monitor` dynamique ⬜
+### Lot 11 : `Monitor` dynamique ✅
 
-- [ ] `ListenPlan::extend(ios, android, channels)` : sélection des relais des nouveaux canaux,
-      ajoutés à des groupes stables nouveaux ou incomplets ; les souscriptions existantes ne
-      changent pas, sauf celle du groupe complété.
-- [ ] `Monitor::descend(geohash)` : enfants de niveau de canal suivant (`channels::children`
-      jusqu'au prochain `Level` observé), plafond `max_channels` appliqué au total
-      (`Error::TooManyChannels`), probe des nouveaux relais seulement, diff appliqué. Rend la
-      liste des canaux ajoutés. Un canal déjà présent n'est pas dupliqué ; retiré, il est
-      réintégré.
-- [ ] `Monitor::watch_channels(channels)` : même chose pour une liste explicite.
-- [ ] Canaux ajoutés par descente persistés (D12) : migration `0002_channel_origin.sql`
-      (colonne `origin` : `start` ou `descent`), relus au démarrage ; option
-      `--forget-descents`.
-- [ ] `Monitor::relays()` → `Vec<RelayInfo>` (url, lat, lon, plateformes, statut du probe,
-      état des connexions, nombre de canaux) : coordonnées lues dans les `RelayDirectory`.
-- [ ] `Monitor::subscribe()` → `broadcast::Receiver<MonitorEvent>` : `Tick { at }` à chaque
-      tour de boucle, `Retired(Vec<String>)`, `Reinstated(Vec<String>)`, `PlanChanged`,
-      `RelayChanged(String)`. Un abonné en retard perd des tick (`Lagged`) et se resynchronise
-      par un `snapshot()` complet.
-- [ ] Rechargement 24 h (lot 8) : les canaux de descente sont conservés comme les retraits.
+- [x] `ListenPlan::extend(ios, android, channels)` : sélection des relais des nouveaux canaux,
+      ajoutés au dernier groupe de chaque relais tant qu'il a de la place, puis à de nouveaux
+      groupes ; les souscriptions existantes ne changent pas, sauf celle du groupe complété
+      (aucun `CLOSE`). Tout ou rien si un canal est invalide. `len()` / `is_empty()`.
+- [x] `Monitor::descend(geohash)` : canaux du niveau de canal suivant dans la cellule (canal ou
+      maille de la zone, niveau 3 compris) ; le niveau 7 est atteignable ainsi (demande
+      explicite, D1). Plafond `max_channels` appliqué au total (`Error::TooManyChannels` avec
+      l'effectif, rien n'est changé) ; hors zone → `Error::OutsideArea` ; sous le niveau 7 →
+      `Error::NoFinerLevel`. Canal déjà surveillé laissé tel quel, retiré réintégré (log INFO).
+      Rend les canaux ajoutés ou réintégrés ; log INFO `descended into u09tv: 32 channels…`.
+- [x] Écoute immédiate des nouveaux canaux ; probe des nouveaux relais seulement, **en tâche
+      de fond** : ses verdicts écartent ensuite les relais morts ou AUTH (le listener les
+      abandonne de toute façon de lui-même). Pas d'attente du probe avant l'écoute.
+- [x] `Monitor::watch_channels(channels)` : même chose pour une liste explicite.
+- [x] Canaux ajoutés persistés (D12) : migration `0002_channel_origin.sql` (colonne `origin` :
+      `start` ou `descent`), `Write::Descent`, `Write::ForgetDescents`, `Store::descents()`.
+      Restaurés au démarrage s'ils sont dans la zone de départ, dans la limite du plafond
+      (WARN au-delà) ; ceux qui étaient retirés le restent (D6).
+      `MonitorConfig::forget_descents` (`--forget-descents`).
+- [x] Listes de relais gardées dans l'état du `Monitor` (aussi avec `Monitor::start`), pour
+      calculer les relais des nouveaux canaux.
+- [x] `Monitor::relays()` → `Vec<RelayInfo>` (url, lat, lon, iOS / Android, statut, écouté,
+      nombre de canaux surveillés, états des connexions), relais écartés compris.
+- [x] `Monitor::subscribe()` → `broadcast::Receiver<MonitorEvent>` (256 événements) :
+      `Tick { at }`, `Added`, `Retired`, `Reinstated` (listes de canaux), `RelaysChanged`
+      (verdict ou état de connexion), `PlanChanged` (rechargement). Un abonné en retard reçoit
+      `Lagged` et se resynchronise par un `snapshot()` complet.
+- [x] Rechargement 24 h (lot 8) : les canaux de descente sont conservés.
+- [x] Exemple `watch` : commande `descend <geohash>` et option `--forget-descents`.
 
-Tests (`tests/monitor.rs`, `tests/plan.rs`) : `extend` ne touche pas les souscriptions déjà
-envoyées ; descente de `u09tv` → 32 canaux de niveau 6 souscrits sur leurs relais ;
-dépassement du plafond → erreur, plan inchangé ; descente persistée puis relue après
-redémarrage ; `subscribe` reçoit `Retired` avec le log INFO ; abonné saturé → `Lagged`.
+Tests (`tests/descend.rs`, 8 tests ; `tests/plan.rs` +3 ; `tests/store.rs` +2) : `extend`
+garde les souscriptions envoyées et ne ferme rien ; canaux connus ignorés, dernier groupe
+complété ; canal invalide → plan inchangé ; descente de `u09tv` → 32 canaux de niveau 6
+écoutés, événement compté, `Added` reçu, log INFO ; plafond, hors zone, geohash invalide,
+niveau 7 puis rien en dessous ; restauration au redémarrage, pas dans une autre zone,
+`forget_descents` ; descentes retirées restées retirées, réintégrées par une nouvelle
+descente ; relais mort choisi seulement après une descente → probé, `Dead`, écarté ;
+`RelayInfo` ; abonné lent → `Lagged` ; rechargement des listes → descentes conservées ;
+migration d'une base v1 avec ses canaux.
 
 ### Lot 12 : modèle exposé au navigateur ⬜
 
@@ -307,3 +323,4 @@ Fini quand : tous les critères d'acceptation de la spec sont vérifiés, naviga
 | 27/10/2026 | — | D10 à D16 validées (Leaflet embarqué, deltas, descentes persistées, exposition locale par défaut, `--no-drop-dead` abandonné, menu au clic, échelle logarithmique). Spec corrigée (entrées du CLI). |
 | 27/10/2026 | 10 | Feature `server` (par défaut), binaire `bitchat-geohash` (page seule, `--listen`, arrêt sur Ctrl-C), `server::router()` et ressources embarquées (`include_bytes!`). Leaflet 1.9.4 depuis le registre npm, intégrité `sha512-nxS1ynzJ…FA74PA==` conforme ; SHA-256 `leaflet.js` `db49d009…f4e5641a`, `leaflet.css` `a7837102…4d147d04c6`. 96 tests (92 sans la feature) ; clippy propre dans les deux configurations. |
 | 27/10/2026 | 10 | `Cargo.lock` propre au dépôt (227 paquets), tiré du verrou du workspace pour garder les mêmes versions ; copie hors workspace : `cargo test --locked` 96 tests, 92 sans la feature, clippy et build release OK. |
+| 27/10/2026 | 11 | `ListenPlan::extend`, `Monitor::descend` / `watch_channels` / `relays` / `subscribe`, migration `0002_channel_origin`. Probe des nouveaux relais en tâche de fond plutôt qu'avant l'écoute (pas d'attente au clic). 108 tests (104 sans la feature), stables sur 3 lancements. **Boucle fermée** sur `wss://relay.famillevital.club` : `watch u09tv --depth 0`, `descend u09tv` (32 canaux ajoutés sur la connexion ouverte, sans reconnexion), kind 20000 publié par `nak` avec une clé jetable dans `u09tvw` → compté dans `u09tvw` seul. |

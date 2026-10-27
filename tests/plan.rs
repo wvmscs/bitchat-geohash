@@ -247,3 +247,82 @@ fn plan_of_u09_depth_2_under_a_second() {
     assert_eq!(channels.len(), 1_056);
     assert!(elapsed.as_secs_f64() < 1.0, "{elapsed:?}");
 }
+
+fn strings(v: &[&str]) -> Vec<String> {
+    v.iter().map(|c| c.to_string()).collect()
+}
+
+#[test]
+fn extend_keeps_the_subscriptions_already_sent() {
+    let ios = RelayDirectory::parse(IOS);
+    let android = RelayDirectory::parse(ANDROID);
+    let start = enumerate("u09t", 1, &Level::DEFAULT, DEFAULT_MAX_CHANNELS).unwrap();
+    let mut p = ListenPlan::build(Some(&ios), Some(&android), &start, small()).unwrap();
+    let before = p.clone();
+    let children = enumerate("u09tv", 1, &[Level::Neighbourhood], DEFAULT_MAX_CHANNELS).unwrap();
+    let added = p.extend(Some(&ios), Some(&android), &children).unwrap();
+    assert_eq!(added.len(), 32);
+    assert_eq!(p.len(), 33 + 32);
+    for relay in before.relays() {
+        let old = before.subscriptions(&relay);
+        let new = p.subscriptions(&relay);
+        // Every old group keeps its id and channels, except the last one,
+        // which may have been completed with new channels.
+        for (i, sub) in old.iter().enumerate() {
+            let same = new.iter().find(|s| s.id == sub.id).unwrap();
+            if i + 1 < old.len() {
+                assert_eq!(same, sub, "{relay} {}", sub.id);
+            } else {
+                assert!(
+                    same.channels.starts_with(&sub.channels),
+                    "{relay} {}",
+                    sub.id
+                );
+            }
+        }
+    }
+    let diff = before.diff(&p);
+    assert!(!diff.is_empty());
+    for change in diff.relays.values() {
+        if let RelayChange::Update { close, .. } = change {
+            assert!(close.is_empty(), "extending closes nothing");
+        }
+    }
+    for c in &children {
+        assert!(p.contains(c) && !p.is_retired(c));
+    }
+}
+
+#[test]
+fn extend_skips_known_channels_and_fills_the_last_group() {
+    let dir = RelayDirectory::parse("Relay URL,Latitude,Longitude\nwss://a.example,48.85,2.35\n");
+    let mut p =
+        ListenPlan::build(Some(&dir), None, &strings(&["u09tv", "u09tu"]), small()).unwrap();
+    let added = p
+        .extend(
+            Some(&dir),
+            None,
+            &strings(&["u09tu", "u09ty", "u09tz", "u09ty"]),
+        )
+        .unwrap();
+    assert_eq!(added, ["u09ty", "u09tz"]);
+    assert_eq!(p.relays().len(), 1);
+    let subs = p.subscriptions(&p.relays()[0]);
+    let groups: Vec<&[String]> = subs.iter().map(|s| s.channels.as_slice()).collect();
+    assert_eq!(
+        groups,
+        [
+            &strings(&["u09tu", "u09tv", "u09ty"])[..],
+            &strings(&["u09tz"])[..]
+        ]
+    );
+}
+
+#[test]
+fn extend_with_an_invalid_channel_changes_nothing() {
+    let mut p = plan(&["u09tv"]);
+    let before = p.clone();
+    assert!(p.extend(None, None, &strings(&["u09tu", "u09ta"])).is_err());
+    assert_eq!(p.len(), 1);
+    assert!(before.diff(&p).is_empty());
+}

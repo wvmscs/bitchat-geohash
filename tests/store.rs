@@ -264,3 +264,53 @@ fn schema_has_no_place_for_personal_data() {
         assert!(!FORBIDDEN.iter().any(|f| name.contains(f)), "column {col}");
     }
 }
+
+#[test]
+fn descents_are_kept_until_forgotten() {
+    let db = TempDb::new("descents");
+    let mut store = Store::open(&db.0).unwrap();
+    store
+        .apply(&[
+            retired("u09tv", 100),
+            Write::Descent {
+                geohash: "u09tvq".into(),
+                added_at: 200,
+            },
+            Write::Descent {
+                geohash: "u09tvw".into(),
+                added_at: 200,
+            },
+        ])
+        .unwrap();
+    // A later state change keeps the origin.
+    store.apply(&[retired("u09tvq", 300)]).unwrap();
+    drop(store);
+    let mut store = Store::open(&db.0).unwrap();
+    assert_eq!(store.descents().unwrap(), ["u09tvq", "u09tvw"]);
+    assert_eq!(store.retired_channels().unwrap(), ["u09tv", "u09tvq"]);
+    store.apply(&[Write::ForgetDescents]).unwrap();
+    assert!(store.descents().unwrap().is_empty());
+    assert_eq!(store.retired_channels().unwrap(), ["u09tv"]);
+}
+
+#[test]
+fn version_1_database_is_migrated_with_its_channels() {
+    let db = TempDb::new("v1");
+    let conn = rusqlite::Connection::open(&db.0).unwrap();
+    conn.execute_batch(include_str!("../src/store/migrations/0001_init.sql"))
+        .unwrap();
+    conn.pragma_update(None, "user_version", 1).unwrap();
+    conn.execute(
+        "INSERT INTO channel (geohash, state, changed_at, reason) VALUES ('u09tv', 'retired', 1, NULL)",
+        [],
+    )
+    .unwrap();
+    drop(conn);
+    let store = Store::open(&db.0).unwrap();
+    assert_eq!(store.schema_version().unwrap(), SCHEMA_VERSION);
+    assert_eq!(store.retired_channels().unwrap(), ["u09tv"]);
+    assert!(
+        store.descents().unwrap().is_empty(),
+        "old channels are part of the start area"
+    );
+}

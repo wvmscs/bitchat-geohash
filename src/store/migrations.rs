@@ -15,10 +15,16 @@ pub(crate) struct Migration {
 }
 
 /// All migrations, in order; migration `i` brings the schema to version `i + 1`.
-pub(crate) const MIGRATIONS: &[Migration] = &[Migration {
-    name: "0001_init",
-    sql: include_str!("migrations/0001_init.sql"),
-}];
+pub(crate) const MIGRATIONS: &[Migration] = &[
+    Migration {
+        name: "0001_init",
+        sql: include_str!("migrations/0001_init.sql"),
+    },
+    Migration {
+        name: "0002_channel_origin",
+        sql: include_str!("migrations/0002_channel_origin.sql"),
+    },
+];
 
 /// Schema version this code writes.
 pub const SCHEMA_VERSION: u32 = MIGRATIONS.len() as u32;

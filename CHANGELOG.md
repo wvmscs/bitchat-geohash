@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- `monitor`: channels added while running (`Monitor::descend`, `Monitor::watch_channels`), listened to at once, new relays probed in the background, kept across restarts (migration `0002_channel_origin`, `forget_descents`); `Monitor::relays()` (`RelayInfo`); change notifications (`Monitor::subscribe`, `MonitorEvent`). `ListenPlan::extend`. `watch`: `descend <geohash>`, `--forget-descents` (step 2, lot 11).
 - Feature `server` (default) and the `bitchat-geohash` binary: axum router serving the map page and its built-in files, Leaflet 1.9.4 included (step 2, lot 10).
 - Crate skeleton: modules of step 1, `Error` type, protocol constants.
 - `directory`: relay list parsing (`RelayDirectory`, `Platform`, `normalize_url`).

@@ -4,7 +4,7 @@
 //!   cargo run -p bitchat-geohash --example watch -- u09 --depth 2 \
 //!       [--levels 2,4,5,6] [--max-cells 2048] [--window 15m] [--inactivity 15m] \
 //!       [--relays-csv <url|path>] [--android-csv <url|path> | --no-android] \
-//!       [--no-probe] [--db bitchat-geohash.sqlite] [--reinstate-all] \
+//!       [--no-probe] [--db bitchat-geohash.sqlite] [--reinstate-all] [--forget-descents] \
 //!       [--refresh 5s] [--duration 20m] [--verbose]
 //!
 //! * Relay lists: the apps' official ones by default (iOS `--relays-csv`,
@@ -13,8 +13,9 @@
 //! * Read-only: nothing is published, AUTH is never answered.
 //! * Channels silent for `--inactivity` are retired (INFO line on stderr)
 //!   and stay retired across runs (same `--db`) until reinstated.
-//! * Commands on stdin: `reinstate <geohash>...`, `reinstate all`,
-//!   `status`, `quit`.
+//! * Commands on stdin: `descend <geohash>` (watch the next channel level
+//!   inside it; kept across runs unless `--forget-descents`),
+//!   `reinstate <geohash>...`, `reinstate all`, `status`, `quit`.
 //! * The table shows counters only: no pubkey, no nickname, no content.
 
 use std::time::{Duration, Instant};
@@ -42,7 +43,8 @@ fn usage() -> ! {
     eprintln!(
         "usage: watch <geohash> [--depth N] [--levels 2,4,5,6] [--max-cells N] [--window 15m] \
          [--inactivity 15m] [--relays-csv <url|path>] [--android-csv <url|path> | --no-android] \
-         [--no-probe] [--db <path>] [--reinstate-all] [--refresh 5s] [--duration <d>] [--verbose]"
+         [--no-probe] [--db <path>] [--reinstate-all] [--forget-descents] [--refresh 5s] \
+         [--duration <d>] [--verbose]"
     );
     std::process::exit(2)
 }
@@ -93,6 +95,7 @@ fn parse_args() -> Args {
             "--no-probe" => config.probe = false,
             "--db" => db = value(),
             "--reinstate-all" => config.reinstate_all = true,
+            "--forget-descents" => config.forget_descents = true,
             "--refresh" => refresh = duration(&value()),
             "--duration" => duration_limit = Some(duration(&value())),
             "--verbose" => verbose = true,
@@ -171,13 +174,17 @@ async fn main() {
                 match words.as_slice() {
                     ["quit"] | ["exit"] => break,
                     ["status"] => print_plan(&monitor.status().await.expect("monitor"), &monitor.snapshot().await.expect("monitor")),
+                    ["descend", cell] => match monitor.descend(cell).await {
+                        Ok(added) => println!("watched: {} channels {added:?}", added.len()),
+                        Err(e) => println!("descend {cell}: {e}"),
+                    },
                     ["reinstate", "all"] => println!("reinstated: {:?}", monitor.reinstate_all().await.expect("monitor")),
                     ["reinstate", rest @ ..] if !rest.is_empty() => {
                         let back = monitor.reinstate(rest.iter().map(|s| s.to_lowercase()).collect()).await.expect("monitor");
                         println!("reinstated: {back:?}");
                     }
                     [] => {}
-                    _ => println!("commands: reinstate <geohash>... | reinstate all | status | quit"),
+                    _ => println!("commands: descend <geohash> | reinstate <geohash>... | reinstate all | status | quit"),
                 }
             }
             _ = async {

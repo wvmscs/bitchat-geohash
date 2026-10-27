@@ -9,6 +9,10 @@ pub enum Error {
     InvalidGeohash(String),
     #[error("{count} channels requested, more than the maximum of {max}")]
     TooManyChannels { count: u64, max: usize },
+    #[error("channel {geohash:?} is outside the watched area {start:?}")]
+    OutsideArea { geohash: String, start: String },
+    #[error("no channel level below {0:?}")]
+    NoFinerLevel(String),
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
     #[error("database error: {0}")]

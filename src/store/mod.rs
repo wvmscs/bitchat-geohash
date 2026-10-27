@@ -87,6 +87,13 @@ pub enum Write {
         reason: Option<String>,
     },
     Buckets(Vec<CellBucket>),
+    /// A channel added by a descent: watched, restored at the next start.
+    Descent {
+        geohash: String,
+        added_at: i64,
+    },
+    /// Drops every channel added by a descent (`--forget-descents`).
+    ForgetDescents,
 }
 
 /// SHA-256 of a relay list, hex: tells whether a reload changed anything.
@@ -193,6 +200,15 @@ impl Store {
             .collect())
     }
 
+    /// Channels added by descents, in geohash order.
+    pub fn descents(&self) -> Result<Vec<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT geohash FROM channel WHERE origin = 'descent' ORDER BY geohash")?;
+        let rows = stmt.query_map([], |r| r.get(0))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
     /// Buckets of a channel with `from <= bucket_start < to`, oldest first.
     pub fn buckets(&self, geohash: &str, from: i64, to: i64) -> Result<Vec<CellBucket>> {
         let mut stmt = self.conn.prepare(
@@ -260,6 +276,17 @@ fn apply_one(tx: &rusqlite::Transaction, w: &Write) -> Result<()> {
                  SET state = excluded.state, changed_at = excluded.changed_at, reason = excluded.reason",
                 params![geohash, state.as_str(), changed_at, reason],
             )?;
+        }
+        Write::Descent { geohash, added_at } => {
+            tx.execute(
+                "INSERT INTO channel (geohash, state, changed_at, reason, origin)
+                 VALUES (?1, 'watched', ?2, 'descent', 'descent')
+                 ON CONFLICT (geohash) DO UPDATE SET origin = 'descent'",
+                params![geohash, added_at],
+            )?;
+        }
+        Write::ForgetDescents => {
+            tx.execute("DELETE FROM channel WHERE origin = 'descent'", [])?;
         }
         Write::Buckets(buckets) => {
             let mut stmt = tx.prepare_cached(

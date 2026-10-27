@@ -155,8 +155,57 @@ impl ListenPlan {
         })
     }
 
+    /// Adds channels after the build (descent into a cell). Existing groups
+    /// keep their channels: a new channel goes to its relay's last group
+    /// while it has room, then to new groups, so only the subscription of a
+    /// completed group changes. Known channels are skipped; nothing is added
+    /// if one channel is invalid. Returns the channels added, sorted.
+    pub fn extend(
+        &mut self,
+        ios: Option<&RelayDirectory>,
+        android: Option<&RelayDirectory>,
+        channels: &[String],
+    ) -> Result<Vec<String>> {
+        let mut fresh: BTreeMap<String, Vec<Selected>> = BTreeMap::new();
+        for channel in channels {
+            if !self.channels.contains_key(channel) && !fresh.contains_key(channel) {
+                fresh.insert(channel.clone(), select_both(ios, android, channel)?);
+            }
+        }
+        let size = self.config.max_tags_per_filter.max(1);
+        for (channel, selected) in &fresh {
+            for s in selected {
+                let groups = self.groups.entry(s.relay.url.clone()).or_default();
+                match groups.last_mut() {
+                    Some(last) if last.len() < size => last.push(channel.clone()),
+                    _ => groups.push(vec![channel.clone()]),
+                }
+            }
+        }
+        let added: Vec<String> = fresh.keys().cloned().collect();
+        for (channel, selected) in fresh {
+            self.channels.insert(
+                channel,
+                ChannelEntry {
+                    selected,
+                    retired: false,
+                },
+            );
+        }
+        Ok(added)
+    }
+
     pub fn config(&self) -> &PlanConfig {
         &self.config
+    }
+
+    /// Number of channels, watched or retired.
+    pub fn len(&self) -> usize {
+        self.channels.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.channels.is_empty()
     }
 
     /// Watched channels (not retired), in geohash order.

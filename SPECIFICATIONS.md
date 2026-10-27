@@ -102,7 +102,9 @@ sur une carte OpenStreetMap.
 * Chaque cellule est un rectangle coloré selon une échelle (participants ou messages, au choix).
 * Mise à jour poussée en direct (WebSocket ou SSE), pas de rechargement.
 * **Survol** d'une cellule : affichage du modèle du §3.
-* **Clic** : descente d'un niveau (énumération et écoute à la demande des enfants).
+* **Clic** : descente d'un niveau (énumération et écoute à la demande des enfants). Les
+  canaux ajoutés comptent dans le plafond, sont écoutés aussitôt et conservés après un
+  redémarrage (sauf `--forget-descents`).
 * Calque optionnel « relais » : position des relais, colorés par verdict, comme dans `geohash_map overlay`.
 
 ### 5. Vie privée (non-objectifs)
