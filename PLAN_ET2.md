@@ -16,7 +16,7 @@ Règle : seuls les fichiers de `bitchat-geohash/` sont modifiés ; le dépôt re
 | 11 bis | Correction de la sélection des relais (une règle par app), report de bitchat-envelope | ✅ |
 | 12 | Modèle exposé au navigateur (JSON) et test de vie privée | ✅ |
 | 13 | Serveur axum : page, état, flux SSE, commandes, protections | ✅ |
-| 13 bis | TLS optionnel, HTTP/1.1 et HTTP/2 | ⬜ |
+| 13 bis | TLS optionnel, HTTP/1.1 et HTTP/2 | ✅ |
 | 14 | Page carte : cellules, échelle, survol, niveaux | ⬜ |
 | 15 | Interaction : descente au clic, réintégration, remontée | ⬜ |
 | 16 | Calques relais et mailles (somme des enfants) | ⬜ |
@@ -227,27 +227,40 @@ de la limite → 503, arrêt → flux fermé et monitor rendu ; adresse non loca
 `allow_remote` refusée. Tests unitaires (`guard.rs`) : noms d'hôte acceptés, origine des tuiles
 pour la CSP.
 
-### Lot 13 bis : TLS optionnel ⬜
+### Lot 13 bis : TLS optionnel ✅
 
-- [ ] `ServerConfig::tls: Option<TlsFiles { cert, key }>` : certificat et clé PEM fournis par
+- [x] `ServerConfig::tls: Option<TlsFiles { cert, key }>` : certificat et clé PEM fournis par
       l'utilisateur (`--tls-cert`, `--tls-key`), par exemple produits par `mkcert` (D17).
-- [ ] `server::tls` : boucle d'acceptation `tokio-rustls` + `hyper-util` (`auto::Builder`),
-      ALPN `h2` puis `http/1.1` : HTTP/2 lève la limite de 6 connexions par hôte (flux SSE de
-      plusieurs onglets multiplexés). Fournisseur crypto `ring`, déjà installé par
-      `install_crypto_provider()`.
-- [ ] Sans TLS : HTTP/1.1 simple, comportement par défaut sur `127.0.0.1`.
-- [ ] `--allow-remote` exige TLS ; `--insecure-remote` le permet sans, avec un WARN au démarrage.
-- [ ] Contrôle `Host` aligné sur les noms du certificat (SAN) quand TLS est actif ; pas de
-      `Strict-Transport-Security` (gênant sur `localhost`).
-- [ ] Erreurs claires : fichier absent, PEM illisible, clé ne correspondant pas au certificat.
-- [ ] Recette `mkcert` documentée (`mkcert -install`, `mkcert localhost 127.0.0.1 ::1`).
+- [x] `server::tls` : boucle d'acceptation `tokio-rustls` + `hyper-util` (`auto::Builder`),
+      ALPN `h2` puis `http/1.1` ; poignée de main bornée (10 s) ; à l'arrêt, chaque
+      connexion est fermée proprement. Fournisseur crypto `ring` (`install_crypto_provider()`).
+- [x] Sans TLS : HTTP/1.1 simple (`axum::serve`), comportement par défaut sur `127.0.0.1`.
+- [x] `allow_remote` exige TLS (`Error::RemoteWithoutTls`) ; `insecure_remote` le permet sans,
+      avec un WARN au démarrage.
+- [x] Contrôle `Host` aligné sur le certificat quand TLS est actif : le nom doit être couvert
+      par ses SAN (`rustls::client::verify_server_name`) et le port être celui du serveur ;
+      `Origin` attendu en `https://`. Pas de `Strict-Transport-Security`.
+- [x] Erreurs claires (`Error::Tls`, avec le chemin) : fichier absent, PEM sans certificat ou
+      sans clé, clé ne correspondant pas au certificat (vérifiée par rustls).
+- [x] Recette `mkcert` documentée (`AGENTS.md`).
 - [ ] Génération automatique d'un certificat autosigné (`rcgen`) : reportée à l'étape 3, si
       WKWebView en a besoin (validation par empreinte côté Swift).
 
-Tests (`tests/tls.rs`) : certificat de test figé dans `tests/data/` (autorité de test, jamais
-de vraie clé) ; client `reqwest` qui lui fait confiance ; page servie en HTTP/2 (ALPN `h2`)
-et en HTTP/1.1 ; flux SSE reçu en TLS ; plusieurs flux SSE sur une seule connexion HTTP/2 ;
-`--allow-remote` sans TLS refusé ; clé et certificat discordants → erreur au démarrage.
+Écarts : **aucune nouvelle dépendance**. Activer `http2` dans reqwest (client de test)
+modifiait le `Cargo.lock` du workspace, hors périmètre : modification annulée. HTTP/2 est donc
+vérifié par une poignée de main `tokio-rustls` (ALPN `h2` choisi) suivie du préambule HTTP/2 et
+de la réponse `SETTINGS` du serveur ; le multiplexage des flux SSE est vérifié à la main avec
+`curl --http2`. Le client `reqwest` des tests vérifie le certificat avec webpki
+(`tls_certs_only`) : le vérificateur de macOS refuse les certificats valables plus de
+825 jours, et celui des tests l'est 100 ans (`mkcert` en fait de 825 jours au plus).
+
+Tests (`tests/tls.rs`, 5 tests) : certificats figés dans `tests/data/tls/` (autorité de test
+dont la clé a été détruite, clés jetables, `README.md` de fabrication) ; page, `/api/state`,
+flux SSE et commande en HTTPS (HTTP/1.1), `Origin` en clair refusé ; flux fermé à l'arrêt ;
+`Host` : `localhost` et `127.0.0.1` acceptés, nom étranger, autre port ou port absent → 421 ;
+ALPN `http/1.1` seul → `http/1.1`, `h2` proposé → `h2` et trame `SETTINGS` reçue ; fichier
+absent, PEM sans certificat, fichier sans clé, clé discordante → `Error::Tls` explicite ;
+adresse distante sans TLS → `Error::RemoteWithoutTls`.
 
 ### Lot 14 : page carte ⬜
 
@@ -391,3 +404,5 @@ Fini quand : tous les critères d'acceptation de la spec sont vérifiés, naviga
 | 27/10/2026 | 12 | `server::model` : vues, `Push` (SSE), `Published` (deltas). D20 validée : tous les chiffres affichés, seuil *k* désactivé par défaut (`k_threshold` 3 → 0, gardé en option ; seuls les participants passent à `"low"` s'il est réglé) ; spec §5 et invariant 1 corrigés. 123 tests (114 sans la feature), stables sur 3 lancements ; clippy propre dans les deux configurations. |
 | 27/10/2026 | — | Lot 12 commité (`2bc7165`). |
 | 27/10/2026 | 13 | `server::serve`, `Server`, routes `/api/*`, SSE, diffusion des deltas, protections D13, binaire minimal (geohash, `--listen`, `--allow-remote`, `--db`). 132 tests (114 sans la feature), stables sur 3 lancements ; clippy propre dans les deux configurations. Essai réel du binaire sur `u09tv` (listes officielles) : 33 cellules, 8 relais dont 1 écarté (certificat), `hello` puis deltas dans le flux, `Host` étranger → 421, Ctrl-C → arrêt propre. |
+| 27/10/2026 | — | Lot 13 commité (`825ebc9`). |
+| 27/10/2026 | 13 bis | TLS optionnel (`tokio-rustls` + `hyper-util`, ALPN `h2`/`http/1.1`), `Host` contrôlé par les SAN du certificat, `Error::Tls` et `Error::RemoteWithoutTls`, options `--tls-cert`, `--tls-key`, `--insecure-remote` du binaire. Aucune dépendance ajoutée (reqwest `http2` écarté : il modifiait le verrou du workspace). 137 tests (114 sans la feature), stables sur 3 lancements ; clippy propre ; tout en `--locked`. Essai réel du binaire en HTTPS (certificat de test) : page en HTTP/2 et HTTP/1.1, **8 flux SSE sur une seule connexion TCP** (`curl --http2 -Z`), HTTP en clair sur le port TLS rejeté, Ctrl-C → arrêt propre. |

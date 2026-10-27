@@ -9,3 +9,5 @@
 # Left by Swift tooling opened on the crate root; the package is in swift/
 /.build
 .DS_Store
+# mkcert output (real certificates, never committed; test ones are in tests/data/tls/)
+/*.pem

@@ -11,6 +11,7 @@ mod api;
 mod assets;
 mod guard;
 pub mod model;
+mod tls;
 
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicUsize;
@@ -26,6 +27,7 @@ use tokio::sync::{broadcast, watch};
 use tokio::task::JoinHandle;
 
 pub use assets::Asset;
+pub use tls::TlsFiles;
 
 use crate::error::{Error, Result};
 use crate::monitor::{Monitor, MonitorConfig};
@@ -65,6 +67,10 @@ pub struct ServerConfig {
     pub listen: SocketAddr,
     /// Required to listen on an address other than a loopback one (D13).
     pub allow_remote: bool,
+    /// Certificate and key: HTTPS, HTTP/2 or HTTP/1.1 by ALPN (D17).
+    pub tls: Option<TlsFiles>,
+    /// Allows `allow_remote` without TLS, with a warning.
+    pub insecure_remote: bool,
     /// Tile URL template and its attribution, given to the page.
     pub tiles: String,
     pub attribution: String,
@@ -83,6 +89,8 @@ impl Default for ServerConfig {
         ServerConfig {
             listen: SocketAddr::from(([127, 0, 0, 1], 8080)),
             allow_remote: false,
+            tls: None,
+            insecure_remote: false,
             tiles: model::DEFAULT_TILES.to_owned(),
             attribution: model::DEFAULT_ATTRIBUTION.to_owned(),
             push_every: Duration::from_secs(1),
@@ -97,6 +105,7 @@ impl Default for ServerConfig {
 /// back.
 pub struct Server {
     addr: SocketAddr,
+    https: bool,
     stop: watch::Sender<bool>,
     http: JoinHandle<std::io::Result<()>>,
     pusher: JoinHandle<()>,
@@ -109,9 +118,10 @@ impl Server {
         self.addr
     }
 
-    /// `http://addr`, without a trailing slash.
+    /// `http://addr` or `https://addr`, without a trailing slash.
     pub fn url(&self) -> String {
-        format!("http://{}", self.addr)
+        let scheme = if self.https { "https" } else { "http" };
+        format!("{scheme}://{}", self.addr)
     }
 
     /// Closes the SSE streams, waits for the requests in progress, and
@@ -126,8 +136,9 @@ impl Server {
 
 /// Starts the server for `monitor`, started with `monitor_config`.
 ///
-/// Refuses a non-loopback address without `allow_remote`, and warns with
-/// it: there is no authentication (D13).
+/// Refuses a non-loopback address without `allow_remote`, and without TLS
+/// unless `insecure_remote`; warns with it: there is no authentication
+/// (D13, D17). Unreadable or mismatched TLS files are an error.
 pub async fn serve(
     monitor: Monitor,
     monitor_config: &MonitorConfig,
@@ -137,8 +148,15 @@ pub async fn serve(
         if !config.allow_remote {
             return Err(Error::RemoteListen(config.listen.to_string()));
         }
+        if config.tls.is_none() {
+            if !config.insecure_remote {
+                return Err(Error::RemoteWithoutTls(config.listen.to_string()));
+            }
+            tracing::warn!(listen = %config.listen, "no TLS on a non-local address: the map and the commands travel in clear");
+        }
         tracing::warn!(listen = %config.listen, "listening on a non-local address: anyone who can reach it can see the map and send commands");
     }
+    let tls = config.tls.as_ref().map(tls::load).transpose()?;
     let listener = tokio::net::TcpListener::bind(config.listen).await?;
     let addr = listener.local_addr()?;
     let monitor = Arc::new(monitor);
@@ -160,7 +178,11 @@ pub async fn serve(
         keep_alive: config.keep_alive,
         stop: stop_rx.clone(),
     };
-    let guard = Arc::new(guard::Guard::new(addr, &config.tiles));
+    let guard = Arc::new(guard::Guard::new(
+        addr,
+        &config.tiles,
+        tls.as_ref().map(|t| t.leaf.clone()),
+    ));
     let app = Router::new()
         .route("/api/state", get(api::state))
         .route("/api/events", get(api::events))
@@ -171,18 +193,26 @@ pub async fn serve(
         .layer(DefaultBodyLimit::max(config.max_body))
         .layer(axum::middleware::from_fn_with_state(guard, guard::guard));
 
-    let mut http_stop = stop_rx.clone();
-    let http = tokio::spawn(async move {
-        axum::serve(listener, app)
-            .with_graceful_shutdown(async move {
-                let _ = http_stop.wait_for(|s| *s).await;
+    let https = tls.is_some();
+    let http = match tls {
+        Some(tls) => tokio::spawn(tls::serve(listener, tls.acceptor, app, stop_rx.clone())),
+        None => {
+            let mut http_stop = stop_rx.clone();
+            tokio::spawn(async move {
+                axum::serve(listener, app)
+                    .with_graceful_shutdown(async move {
+                        let _ = http_stop.wait_for(|s| *s).await;
+                    })
+                    .await
             })
-            .await
-    });
+        }
+    };
     let pusher = tokio::spawn(push_loop(monitor.clone(), live, config.push_every, stop_rx));
-    tracing::info!("map on http://{addr}/");
+    let scheme = if https { "https" } else { "http" };
+    tracing::info!("map on {scheme}://{addr}/");
     Ok(Server {
         addr,
+        https,
         stop,
         http,
         pusher,

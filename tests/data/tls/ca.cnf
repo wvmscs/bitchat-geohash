@@ -1,0 +1,9 @@
+[req]
+distinguished_name = dn
+prompt = no
+[dn]
+CN = bitchat-geohash test CA (never trust outside tests)
+[ext]
+basicConstraints = critical,CA:TRUE
+keyUsage = critical,keyCertSign,cRLSign
+subjectKeyIdentifier = hash

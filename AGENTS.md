@@ -21,7 +21,8 @@ Step 3 adds a Swift UI through `uniffi`; the Swift package lives in `swift/`.
 - Modify files without reading them first.
 - Modify existing tests, except to fix them or when an instruction in this file requires it
   (for example, extending the privacy tests when adding fields).
-- Edit or regenerate `tests/data/*.csv`: they are frozen for reproducibility.
+- Edit or regenerate `tests/data/*.csv` or `tests/data/tls/`: they are frozen for
+  reproducibility (the TLS files are test-only; their CA key was deleted).
 - Edit a migration that has been committed (see invariant 4).
 - Add dependencies without discussion. Approved: those listed in lot 0 of `PLAN_ET1.md` and
   lot 10 of `PLAN_ET2.md`.
@@ -115,6 +116,7 @@ cargo run -p bitchat-geohash --example watch -- u09 --depth 2                # r
 cargo run -p bitchat-geohash --example watch -- u09tvw --depth 0 --no-android \
     --relays-csv own.csv --db own.sqlite --refresh 1s     # one relay only (own.csv lists it)
 cargo run -p bitchat-geohash -- u09 --listen 127.0.0.1:8080                 # map server (real network)
+cargo run -p bitchat-geohash -- u09 --tls-cert localhost+2.pem --tls-key localhost+2-key.pem   # HTTPS, HTTP/2
 ```
 
 `Cargo.lock` is committed for reproducible standalone builds. Inside the local workspace,
@@ -146,7 +148,8 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
   built into the binary from `src/server/assets/` (page, `app.js`, `app.css`, Leaflet).
   `model.rs`: the JSON views sent to the browser, SSE messages and deltas; `api.rs`: `/api/*`
   routes and the SSE stream; `guard.rs`: `Host`/`Origin`/`Content-Type` checks and security
-  headers; `mod.rs`: `serve`, `Server`, the task that pushes the deltas.
+  headers; `tls.rs`: optional TLS (certificate and key files, ALPN `h2`/`http/1.1`);
+  `mod.rs`: `serve`, `Server`, the task that pushes the deltas.
 - `src/main.rs`: the `bitchat-geohash` binary (`required-features = ["server"]`).
 - `examples/watch.rs`, `tests/`, `tests/data/`, `swift/`.
 
@@ -189,6 +192,11 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
   `assets.rs`. Only the map tiles come from outside.
 - Page text, like logs, is in English. Strings from relays or relay lists go through
   `textContent` (`el()` in `app.js`), never `innerHTML`.
+- HTTPS (D17): make a certificate the browser trusts with `mkcert -install` then
+  `mkcert localhost 127.0.0.1 ::1` (gives `localhost+2.pem` and `localhost+2-key.pem`), and pass
+  them with `--tls-cert` / `--tls-key`. HTTP/2 then carries every SSE stream of the browser on
+  one connection (HTTP/1.1 allows 6 per host). Never commit these files. A non-local address
+  needs `--allow-remote` and TLS, or `--insecure-remote`.
 - Every route goes through `guard.rs`: `Host` checked (DNS rebinding), `POST` only with JSON and
   the server's own `Origin`, CSP. Keep it that way for new routes; a refusal is logged.
 - What the browser receives obeys invariant 1: counts only. Everything goes through `server::model`,

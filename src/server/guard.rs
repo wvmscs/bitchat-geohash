@@ -1,5 +1,6 @@
 //! Request checks and security headers (D13): `Host` (DNS rebinding),
-//! `Origin` and `Content-Type` of commands, CSP.
+//! `Origin` and `Content-Type` of commands, CSP. With TLS, the names
+//! accepted are those of the certificate (D17).
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -9,22 +10,64 @@ use axum::http::{HeaderValue, Method, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 
+use rustls_pki_types::CertificateDer;
+
 use super::api::ApiError;
 
 pub(crate) struct Guard {
-    /// Accepted `Host` values; `None` accepts any (unspecified listen
-    /// address, `allow_remote` only).
+    /// Without TLS, the accepted `Host` values; `None` accepts any
+    /// (unspecified listen address, `allow_remote` only).
     hosts: Option<Vec<String>>,
+    /// With TLS, the server certificate: a `Host` is accepted when the
+    /// certificate covers its name and the port is the server's.
+    leaf: Option<CertificateDer<'static>>,
+    port: u16,
     csp: HeaderValue,
 }
 
 impl Guard {
-    pub(crate) fn new(addr: SocketAddr, tiles: &str) -> Self {
+    pub(crate) fn new(
+        addr: SocketAddr,
+        tiles: &str,
+        leaf: Option<CertificateDer<'static>>,
+    ) -> Self {
         Guard {
             hosts: allowed_hosts(addr),
+            leaf,
+            port: addr.port(),
             csp: HeaderValue::from_str(&csp(tiles))
                 .unwrap_or_else(|_| HeaderValue::from_static("default-src 'self'")),
         }
+    }
+
+    fn scheme(&self) -> &'static str {
+        if self.leaf.is_some() { "https" } else { "http" }
+    }
+
+    fn host_ok(&self, host: Option<&str>) -> bool {
+        let Some(host) = host else { return false };
+        match &self.leaf {
+            Some(leaf) => {
+                let (name, port) = split_host(host);
+                port.unwrap_or(443) == self.port && super::tls::covers(leaf, name)
+            }
+            None => self
+                .hosts
+                .as_ref()
+                .is_none_or(|hosts| hosts.iter().any(|a| a.eq_ignore_ascii_case(host))),
+        }
+    }
+}
+
+/// `name:port`, `[v6]:port` or `name` -> (name without brackets, port).
+fn split_host(host: &str) -> (&str, Option<u16>) {
+    if let Some(rest) = host.strip_prefix('[') {
+        let (name, after) = rest.split_once(']').unwrap_or((rest, ""));
+        return (name, after.strip_prefix(':').and_then(|p| p.parse().ok()));
+    }
+    match host.rsplit_once(':') {
+        Some((name, port)) => (name, port.parse().ok()),
+        None => (host, None),
     }
 }
 
@@ -76,11 +119,7 @@ pub(crate) async fn guard(State(g): State<Arc<Guard>>, req: Request, next: Next)
         .and_then(|h| h.to_str().ok())
         .map(str::to_owned)
         .or_else(|| req.uri().authority().map(|a| a.to_string()));
-    if let Some(hosts) = &g.hosts
-        && !host
-            .as_deref()
-            .is_some_and(|h| hosts.iter().any(|a| a.eq_ignore_ascii_case(h)))
-    {
+    if !g.host_ok(host.as_deref()) {
         return refuse(&req, StatusCode::MISDIRECTED_REQUEST, "wrong_host");
     }
     if req.method() == Method::POST {
@@ -98,7 +137,7 @@ pub(crate) async fn guard(State(g): State<Arc<Guard>>, req: Request, next: Next)
             .headers()
             .get(header::ORIGIN)
             .and_then(|v| v.to_str().ok());
-        let expected = host.as_deref().map(|h| format!("http://{h}"));
+        let expected = host.as_deref().map(|h| format!("{}://{h}", g.scheme()));
         if origin.is_none() || origin.map(str::to_owned) != expected {
             return refuse(&req, StatusCode::FORBIDDEN, "wrong_origin");
         }
@@ -150,5 +189,9 @@ mod tests {
             "https://*.tile.example"
         );
         assert_eq!(tile_origin("https://{bad}/x"), "");
+        assert_eq!(split_host("localhost:8443"), ("localhost", Some(8443)));
+        assert_eq!(split_host("[::1]:8443"), ("::1", Some(8443)));
+        assert_eq!(split_host("[::1]"), ("::1", None));
+        assert_eq!(split_host("example.org"), ("example.org", None));
     }
 }

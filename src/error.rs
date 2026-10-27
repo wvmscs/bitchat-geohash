@@ -28,6 +28,10 @@ pub enum Error {
     StoreClosed,
     #[error("listening on {0} (not a loopback address) needs allow_remote")]
     RemoteListen(String),
+    #[error("listening on {0} without TLS needs insecure_remote")]
+    RemoteWithoutTls(String),
+    #[error("TLS: {0}")]
+    Tls(String),
     #[error("the monitor has stopped")]
     MonitorStopped,
     #[error("relay list {0} has no usable relay")]
