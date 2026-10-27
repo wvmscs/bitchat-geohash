@@ -215,6 +215,12 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
   mostly do not store them. `since` (1 h) brings back little.
 - The app sends presence heartbeats only at precisions 2, 4 and 5: at level 6 a participant
   is seen only when they write.
+- Heartbeats go only to the channels of the device's real (GPS) location, never to a channel
+  the user teleported to: a teleported user is counted only when they write. iOS 1.8.0:
+  `GeohashPresenceService` (every 40–80 s, app in the foreground, Tor ready) sends to
+  `LocationStateManager.availableChannels`, computed from GPS only. Presence and messages in
+  a channel are signed by the same per-geohash key (`deriveIdentity(forGeohash:)`), so one
+  person counts once.
 - iOS reads bitchat's reviewed `online_relays_gps.csv`, Android georelays' daily
   `nostr_relays.csv`. The two choices drift apart: always compute both.
 - Relay coordinates come from IP geolocation: many relays share the same point, hence ties.

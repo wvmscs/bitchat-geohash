@@ -20,7 +20,14 @@ sur une carte OpenStreetMap.
   `since` initiale (1 h) ne ramène qu'un complément marginal.
 * **Présence partielle** : l'app n'émet de heartbeat qu'aux précisions 2, 4 et 5. Au niveau 6, un
   participant n'est visible que s'il écrit. Les compteurs de présence ne sont pas comparables
-  d'un niveau à l'autre ; l'interface doit le signaler.
+  d'un niveau à l'autre ; l'interface doit le signaler. Les heartbeats ne partent que vers les
+  canaux de la **position GPS réelle** de l'appareil, jamais vers un canal où l'utilisateur
+  s'est téléporté : un utilisateur téléporté n'est compté que s'il écrit. iOS 1.8.0 :
+  `GeohashPresenceService` (un heartbeat toutes les 40 à 80 s, app au premier plan et Tor
+  prêt) envoie vers `LocationStateManager.availableChannels`, calculé par `computeChannels`
+  depuis le GPS seul ; présences et messages d'un canal sont signés par la même clé, dérivée
+  du geohash (`deriveIdentity(forGeohash:)`), donc une personne compte une fois. Vérifié le
+  27/10/2026 sur `#u09ky` (message téléporté sans présence, avec observation `nak`).
 * **Deux listes de relais** : iOS lit `online_relays_gps.csv` (relue, en retard), Android
   `nostr_relays.csv` (amont, quotidienne). Les deux apps peuvent choisir des relais différents
   pour un même canal ; l'outil écoute l'union et mesure la divergence.
