@@ -11,7 +11,7 @@ Règle : seuls les fichiers de `bitchat-geohash/` sont modifiés ; le dépôt re
 
 | Lot | Contenu | État |
 |---|---|---|
-| 10 | Mise en place : feature `server`, dépendances, binaire, ressources embarquées | ⬜ |
+| 10 | Mise en place : feature `server`, dépendances, binaire, ressources embarquées | ✅ |
 | 11 | `Monitor` : ajout de canaux à chaud (descente), relais géolocalisés, notifications | ⬜ |
 | 12 | Modèle exposé au navigateur (JSON) et test de vie privée | ⬜ |
 | 13 | Serveur axum : page, état, flux SSE, commandes, protections | ⬜ |
@@ -55,26 +55,31 @@ l'étape 3 (Swift, `WKWebView`) la démarrera dans le processus de l'app.
 
 ## Lots
 
-### Lot 10 : mise en place ⬜
+### Lot 10 : mise en place ✅
 
-- [ ] Feature `server` (activée par défaut ; `default-features = false` pour la librairie seule) :
+- [x] Feature `server` (activée par défaut ; `default-features = false` pour la librairie seule) :
       `axum 0.8` (features `tokio`, `http1`, `json`, `query`), `tokio` avec `signal` pour Ctrl-C.
       Pas de `tower-http` ni de `rust-embed` : ressources servies par `include_bytes!`, flux
       SSE construit avec `futures-util` (déjà présent). Pour TLS (lot 13 bis, D17) :
       `tokio-rustls`, `hyper` et `hyper-util` (feature `server-auto`), déjà tirés par axum ou
       proches de `rustls`, et `rustls-pemfile` ou l'API PEM de `rustls-pki-types` pour lire
-      les certificats. Liste à valider (règle d'AGENTS.md).
-- [ ] `[[bin]] bitchat-geohash`, `required-features = ["server"]`.
-- [ ] Leaflet 1.9.4 copié dans `src/server/assets/leaflet/` (licence BSD-2, compatible
+      les certificats. Plus `tracing-subscriber` (journal du binaire), passé de dev à
+      optionnel. Aucun fournisseur crypto autre que ring (ni aws-lc, ni OpenSSL).
+- [x] `[[bin]] bitchat-geohash`, `required-features = ["server"]`.
+- [x] Leaflet 1.9.4 copié dans `src/server/assets/leaflet/` (licence BSD-2, compatible
       GPL-3.0 ; fichier de licence conservé), empreinte SHA-256 notée dans le journal (D10).
-- [ ] Reprise de `bitchat-envelope/examples/common/map_overlay.html` par copie : styles
+- [x] Reprise de `bitchat-envelope/examples/common/map_overlay.html` par copie : styles
       (clair/sombre), fonction `el()` (texte seulement, jamais de HTML venant des relais),
-      épingles de relais en anneau.
-- [ ] `AGENTS.md` : nouvelles commandes, mise en page, invariants du serveur (lot 13) ;
+      épingles de relais en anneau (`ringAnchors()` dans `app.js`).
+- [x] `AGENTS.md` : nouvelles commandes, mise en page, invariants du serveur (lot 13) ;
       lien vers ce plan.
 
 Fini quand : `cargo build` avec et sans `--no-default-features` passe, le binaire démarre et
 sert une page vide.
+
+Tests (`tests/server.rs`, 4 tests) : page et ressources servies avec leur type, toutes
+embarquées, aucune ressource externe dans la page ; chemins inconnus → 404 ; Leaflet
+identique à la version publiée (SHA-256) ; aucune ressource vide.
 
 ### Lot 11 : `Monitor` dynamique ⬜
 
@@ -300,3 +305,5 @@ Fini quand : tous les critères d'acceptation de la spec sont vérifiés, naviga
 | 27/10/2026 | — | Plan initial de l'étape 2. Décisions D9 à D16 proposées. |
 | 27/10/2026 | — | D9 (SSE) validée avec réserve sur la limite de 6 connexions ; D17 (TLS optionnel, HTTP/2) ajoutée et validée ; nouveau lot 13 bis. |
 | 27/10/2026 | — | D10 à D16 validées (Leaflet embarqué, deltas, descentes persistées, exposition locale par défaut, `--no-drop-dead` abandonné, menu au clic, échelle logarithmique). Spec corrigée (entrées du CLI). |
+| 27/10/2026 | 10 | Feature `server` (par défaut), binaire `bitchat-geohash` (page seule, `--listen`, arrêt sur Ctrl-C), `server::router()` et ressources embarquées (`include_bytes!`). Leaflet 1.9.4 depuis le registre npm, intégrité `sha512-nxS1ynzJ…FA74PA==` conforme ; SHA-256 `leaflet.js` `db49d009…f4e5641a`, `leaflet.css` `a7837102…4d147d04c6`. 96 tests (92 sans la feature) ; clippy propre dans les deux configurations. |
+| 27/10/2026 | 10 | `Cargo.lock` propre au dépôt (227 paquets), tiré du verrou du workspace pour garder les mêmes versions ; copie hors workspace : `cargo test --locked` 96 tests, 92 sans la feature, clippy et build release OK. |

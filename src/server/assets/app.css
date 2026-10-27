@@ -1,0 +1,21 @@
+/* Colours and panel taken from bitchat-envelope's map_overlay.html. */
+:root { --bg: #fff; --fg: #1d1d1f; --muted: #6e6e73; --line: #d2d2d7;
+        --ok: #1a8f3c; --auth: #c77c00; --refused: #b85c00; --down: #e53935; --dead: #6d1b1b; --unprobed: #7a7a7a; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #1c1c1e; --fg: #f2f2f7; --muted: #a1a1a6; --line: #3a3a3c; }
+}
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+             font: 14px/1.4 -apple-system, system-ui, sans-serif; }
+#map { position: absolute; inset: 0; }
+#panel { position: absolute; z-index: 1000; top: 12px; right: 12px; width: min(420px, calc(100% - 24px));
+         max-height: calc(100% - 24px); overflow: auto; box-sizing: border-box; padding: 12px 14px;
+         background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+         box-shadow: 0 4px 16px rgba(0,0,0,.18); }
+#panel h1 { font-size: 16px; margin: 0 0 2px; }
+#panel .sub { color: var(--muted); margin-bottom: 8px; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+.pin { display: flex; align-items: center; justify-content: center; box-sizing: border-box;
+       border: 2px solid #fff; border-radius: 50%; color: #fff; font: 700 12px/1 system-ui, sans-serif;
+       box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+.pin.tie { border-style: dashed; }
+.pin.one { border-radius: 4px; }

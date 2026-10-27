@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Feature `server` (default) and the `bitchat-geohash` binary: axum router serving the map page and its built-in files, Leaflet 1.9.4 included (step 2, lot 10).
 - Crate skeleton: modules of step 1, `Error` type, protocol constants.
 - `directory`: relay list parsing (`RelayDirectory`, `Platform`, `normalize_url`).
 - `select`: the apps' relay choice per channel (`closest`, `select_both`), ties for the last slot included.
@@ -18,6 +19,7 @@
 - Frozen relay lists in `tests/data/` (iOS `online_relays_gps.csv`, Android `nostr_relays.csv`).
 
 ### Changed
+- `Cargo.lock` committed: standalone builds are reproducible (same versions as the local workspace).
 - No dependency on `bitchat-envelope` any more: `nostr` module (NIP-01 event, Schnorr verification with `k256`, filter, `unix_now`); tests use an integrated NIP-01 relay (`tests/common/relay.rs`). The crate builds on its own.
 - License: GPL-3.0-only (the repository's `LICENSE`).
 - Default inactivity delay before a channel is retired: 15 min (was 5 min).

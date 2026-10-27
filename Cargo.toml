@@ -22,6 +22,25 @@ rusqlite = { version = "0.41", features = ["bundled"] }
 # is installed process-wide, as for the WebSocket connections.
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
 sha2 = "0.10"
+# Web server of step 2 (feature `server`).
+axum = { version = "0.8", optional = true, default-features = false, features = ["tokio", "http1", "json", "query"] }
+# TLS for the server (lot 13 bis): HTTP/1.1 and HTTP/2 negotiated by ALPN.
+tokio-rustls = { version = "0.26", optional = true, default-features = false, features = ["ring", "tls12"] }
+hyper = { version = "1", optional = true, features = ["server", "http1", "http2"] }
+hyper-util = { version = "0.1", optional = true, features = ["server-auto", "tokio", "service"] }
+rustls-pki-types = { version = "1.9", optional = true, features = ["std"] }
+# Logs of the binary.
+tracing-subscriber = { version = "0.3", optional = true }
+
+[features]
+default = ["server"]
+# The web server and the `bitchat-geohash` binary. Off: the library alone.
+server = ["dep:axum", "dep:tokio-rustls", "dep:hyper", "dep:hyper-util", "dep:rustls-pki-types", "dep:tracing-subscriber", "tokio/signal"]
+
+[[bin]]
+name = "bitchat-geohash"
+path = "src/main.rs"
+required-features = ["server"]
 
 [dev-dependencies]
 tracing-subscriber = "0.3"

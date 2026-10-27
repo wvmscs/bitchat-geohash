@@ -3,7 +3,10 @@
 //! Enumerates the channels inside a geohash, computes the relays the iOS and
 //! Android apps use for each one, listens to kinds 20000/20001 there and
 //! aggregates activity per cell, without keeping personal data. See
-//! `SPECIFICATIONS.md` and `PLAN_ET1.md`.
+//! `SPECIFICATIONS.md`, `PLAN_ET1.md` and `PLAN_ET2.md`.
+//!
+//! Feature `server` (on by default): the web server of the map and the
+//! `bitchat-geohash` binary.
 
 pub mod aggregate;
 pub mod channels;
@@ -15,6 +18,8 @@ pub mod nostr;
 pub mod plan;
 pub mod probe;
 pub mod select;
+#[cfg(feature = "server")]
+pub mod server;
 pub mod store;
 
 pub use error::{Error, Result};

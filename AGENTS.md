@@ -7,8 +7,8 @@ Guidance for coding agents (and humans) working in this crate.
 `bitchat-geohash`: live monitor of BitChat location channels (geohash). It enumerates the
 channels inside a geohash, computes the relays the iOS and Android apps use for each one,
 listens to kinds 20000/20001 there, and aggregates activity per cell, without personal data.
-The spec is [SPECIFICATIONS.md](SPECIFICATIONS.md); step 1 progress is tracked in
-[PLAN_ET1.md](PLAN_ET1.md).
+The spec is [SPECIFICATIONS.md](SPECIFICATIONS.md); progress is tracked in
+[PLAN_ET1.md](PLAN_ET1.md) (step 1, done) and [PLAN_ET2.md](PLAN_ET2.md) (step 2).
 
 Step 1 is the Rust library. Step 2 adds an internal web server in Rust (axum), not Node.js.
 Step 3 adds a Swift UI through `uniffi`; the Swift package lives in `swift/`.
@@ -23,7 +23,9 @@ Step 3 adds a Swift UI through `uniffi`; the Swift package lives in `swift/`.
   (for example, extending the privacy tests when adding fields).
 - Edit or regenerate `tests/data/*.csv`: they are frozen for reproducibility.
 - Edit a migration that has been committed (see invariant 4).
-- Add dependencies without discussion. Approved: those listed in lot 0 of `PLAN_ET1.md`.
+- Add dependencies without discussion. Approved: those listed in lot 0 of `PLAN_ET1.md` and
+  lot 10 of `PLAN_ET2.md`.
+- Edit `src/server/assets/leaflet/`: Leaflet 1.9.4 as released (a test checks its SHA-256).
 - Remove existing functionality.
 
 ### DO
@@ -31,8 +33,8 @@ Step 3 adds a Swift UI through `uniffi`; the Swift package lives in `swift/`.
 - Follow existing naming conventions.
 - Add comments for complex logic.
 - Update documentation when adding features.
-- Keep `PLAN_ET1.md` up to date: tick the boxes, update the dashboard, add a dated line to
-  the journal, record decisions in the decisions table.
+- Keep the plan of the current step (`PLAN_ET2.md`) up to date: tick the boxes, update the
+  dashboard, add a dated line to the journal, record decisions in the decisions table.
 - Before each commit, run the commands listed under Commands.
 
 ### Others
@@ -49,7 +51,7 @@ Step 3 adds a Swift UI through `uniffi`; the Swift package lives in `swift/`.
    `tests/common/`). Be DRY.
 4. Run the commands listed under Commands.
 5. Update tests for new functionality.
-6. Update `PLAN_ET1.md`.
+6. Update `PLAN_ET2.md`.
 7. Keep commits focused and atomic.
 
 ## Environment
@@ -67,7 +69,7 @@ Step 3 adds a Swift UI through `uniffi`; the Swift package lives in `swift/`.
 1. All tests pass.
 2. No errors, no clippy warnings.
 3. Code is formatted (`cargo fmt`).
-4. Documentation updated (`SPECIFICATIONS.md`, `PLAN_ET1.md`, rustdoc).
+4. Documentation updated (`SPECIFICATIONS.md`, `PLAN_ET2.md`, rustdoc).
 5. Changelog entry added (`CHANGELOG.md` in this crate).
 
 ### PR Template
@@ -105,19 +107,28 @@ Run from the crate (a standalone package) or from the local `Nostr/` workspace r
 ```sh
 cargo fmt -p bitchat-geohash --check
 cargo test -p bitchat-geohash
+cargo test -p bitchat-geohash --no-default-features                          # library without the server
 cargo clippy -p bitchat-geohash --all-targets --all-features -- -D warnings   # must be 0 warnings
+cargo clippy -p bitchat-geohash --all-targets --no-default-features -- -D warnings
 cargo test -p bitchat-geohash --release -- --ignored                         # timing tests (plan build)
 cargo run -p bitchat-geohash --example watch -- u09 --depth 2                # real network
 cargo run -p bitchat-geohash --example watch -- u09tvw --depth 0 --no-android \
     --relays-csv own.csv --db own.sqlite --refresh 1s     # one relay only (own.csv lists it)
+cargo run -p bitchat-geohash -- --listen 127.0.0.1:8080                     # map server
 ```
 
+`Cargo.lock` is committed for reproducible standalone builds. Inside the local workspace,
+Cargo uses `Nostr/Cargo.lock` instead and ignores it: after a dependency change, refresh it
+from a copy of the crate outside the workspace (copy the workspace lock there, run
+`cargo tree` to prune it, check with `cargo test --locked`), so both pin the same versions.
+
 Tests run offline: the frozen CSVs from `tests/data/` and the local `TestRelay`
-(`tests/common/relay.rs`). Only the `watch` example touches the real network.
+(`tests/common/relay.rs`). Only the `watch` example and the binary touch the real network
+(the browser also loads map tiles).
 
 ## Layout
 
-Planned for step 1 (see `PLAN_ET1.md` for the details and current state):
+Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
 
 - `src/nostr.rs`: NIP-01 subset: `Event` (id, Schnorr verification), `Filter`, `unix_now`.
 - `src/directory.rs`: `RelayDirectory`, CSV parsing and normalisation, list sources.
@@ -129,6 +140,9 @@ Planned for step 1 (see `PLAN_ET1.md` for the details and current state):
 - `src/aggregate.rs`: deduplication, window, inactivity, `CellStats`.
 - `src/listener.rs`: one tokio task per relay.
 - `src/monitor.rs`: wiring, control loop, 24 h reload.
+- `src/server/` (feature `server`, on by default): axum router; `assets.rs` lists the files
+  built into the binary from `src/server/assets/` (page, `app.js`, `app.css`, Leaflet).
+- `src/main.rs`: the `bitchat-geohash` binary (`required-features = ["server"]`).
 - `examples/watch.rs`, `tests/`, `tests/data/`, `swift/`.
 
 ## Invariants (do not break these)
@@ -153,6 +167,17 @@ Planned for step 1 (see `PLAN_ET1.md` for the details and current state):
    kinds other than 20000/20001 and `g` tags outside the plan.
 7. **Reproducible tests.** Tests use the frozen CSVs and an injected clock; they never
    download relay lists nor depend on wall-clock time.
+
+## Web server
+
+- The library must build and test without the `server` feature: keep server code under
+  `src/server/` and `#[cfg(feature = "server")]`; server tests start with
+  `#![cfg(feature = "server")]`.
+- No CDN: every file the page loads is built in (D10); a new asset gets a line in
+  `assets.rs`. Only the map tiles come from outside.
+- Page text, like logs, is in English. Strings from relays or relay lists go through
+  `textContent` (`el()` in `app.js`), never `innerHTML`.
+- What the browser receives obeys invariant 1: counts only.
 
 ## BitChat protocol gotchas
 
