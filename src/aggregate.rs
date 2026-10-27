@@ -24,7 +24,7 @@ pub struct AggregatorConfig {
     /// (default 15 min).
     pub inactivity_secs: i64,
     /// At level 6, fewer participants than this are shown as "low", without
-    /// a number (default 3).
+    /// a number. Default 0: every count is shown (D20).
     pub k_threshold: u32,
 }
 
@@ -33,7 +33,7 @@ impl Default for AggregatorConfig {
         AggregatorConfig {
             window_secs: 15 * 60,
             inactivity_secs: 15 * 60,
-            k_threshold: 3,
+            k_threshold: 0,
         }
     }
 }
@@ -84,8 +84,8 @@ pub struct CellStats {
     pub watched: bool,
     pub messages: u32,
     pub presences: u32,
-    /// Distinct participants; `None` at level 6 below the k threshold
-    /// ("low activity", no number).
+    /// Distinct participants; `None` at level 6 below the k threshold, when
+    /// one is set ("low activity", no number).
     pub participants: Option<u32>,
     /// Latest `created_at` seen, window or not.
     pub last_seen: Option<i64>,

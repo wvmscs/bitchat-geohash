@@ -4,6 +4,7 @@
 //! Behind the `server` feature, so that the library can be used without it.
 
 mod assets;
+pub mod model;
 
 use axum::Router;
 use axum::extract::Path;

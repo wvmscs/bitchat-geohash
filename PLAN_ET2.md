@@ -14,7 +14,7 @@ Règle : seuls les fichiers de `bitchat-geohash/` sont modifiés ; le dépôt re
 | 10 | Mise en place : feature `server`, dépendances, binaire, ressources embarquées | ✅ |
 | 11 | `Monitor` : ajout de canaux à chaud (descente), relais géolocalisés, notifications | ✅ |
 | 11 bis | Correction de la sélection des relais (une règle par app), report de bitchat-envelope | ✅ |
-| 12 | Modèle exposé au navigateur (JSON) et test de vie privée | ⬜ |
+| 12 | Modèle exposé au navigateur (JSON) et test de vie privée | ✅ |
 | 13 | Serveur axum : page, état, flux SSE, commandes, protections | ⬜ |
 | 13 bis | TLS optionnel, HTTP/1.1 et HTTP/2 | ⬜ |
 | 14 | Page carte : cellules, échelle, survol, niveaux | ⬜ |
@@ -152,23 +152,35 @@ Le « 322 » du document compte les régions à **moins de 5** serveurs distinct
 coordonnées dans les deux listes (`relay.earthly.city` sur `9q`) garde celles d'iOS pour
 l'affichage, comme dans bitchat-envelope.
 
-### Lot 12 : modèle exposé au navigateur ⬜
+### Lot 12 : modèle exposé au navigateur ✅
 
-- [ ] `server::model` : `CellView` (geohash, niveau, bbox `[[s,w],[n,e]]`, `watched`,
+- [x] `server::model` : `CellView` (geohash, niveau, bbox `[[s,w],[n,e]]`, `watched`,
       messages, présences, participants ou `"low"`, `last_seen`, relais avec rangs iOS/Android
-      et statut (Android : liste de rangs), `delivered`, divergence), `MeshView`, `RelayView`, `StatusView`, `Hello`
-      (paramètres : fenêtre, *k*, niveaux, départ, URL des tuiles et attribution).
-      `CellStats` reste sans `serde` : la conversion est explicite, champ par champ.
-- [ ] Messages SSE : `hello` (état complet à la connexion), `cells` (cellules modifiées
-      depuis le dernier envoi), `removed`, `relays`, `status` ; numéro de séquence pour
-      détecter un trou (D11).
-- [ ] Calcul des deltas : comparaison avec le dernier snapshot envoyé, côté serveur, une seule
-      fois pour tous les navigateurs.
+      et statut (Android : liste de rangs), `delivered`, divergence), `MeshView`, `RelayView`
+      (connexions : `connecting`, `connected`, `waiting`, `abandoned`), `StatusView`, `Params`
+      (fenêtre, délai d'inactivité, *k*, niveaux, départ, profondeur, plafond, URL des tuiles
+      et attribution). `CellStats` reste sans `serde` : la conversion est explicite, champ par
+      champ (`From<&CellStats>`, etc.).
+- [x] Messages SSE (`Push`) : `hello` (état complet à la connexion), `cells` (cellules
+      modifiées depuis le dernier envoi), `removed`, `relays` (liste entière si un relais a
+      changé), `status` ; champ `type` = nom d'événement SSE ; `seq` croît de 1 par message,
+      `hello` porte le dernier envoyé (D11).
+- [x] Calcul des deltas : `Published` garde le dernier état envoyé ; `update()` rend les
+      messages dans l'ordre `removed`, `cells`, `relays`, `status`, rien si rien n'a changé ;
+      une seule instance pour tous les navigateurs (branchée au lot 13).
+- [x] Tous les chiffres affichés, niveau 6 compris : seuil *k* désactivé par défaut
+      (`k_threshold` = 0) ; s'il est réglé, seuls les participants passent à `"low"` (D20).
 
-Tests (`tests/model.rs`) : JSON de référence pour une cellule ; cellule de niveau 6 sous *k*
-→ `"low"` sans nombre ; **vie privée** : aucune clé ni valeur de 64 caractères hexadécimaux
-(pubkey, id, signature) et aucun contenu de message dans `hello` ni dans les deltas, avec des
-événements dont le contenu est un marqueur recherché ensuite dans le JSON.
+`MeshView` est prêt ; son transport (dans `hello` ou à la demande, selon le niveau choisi
+dans la page) est décidé au lot 16.
+
+Tests (`tests/model.rs`, 5 tests) : JSON de référence d'une cellule, d'un relais et du statut ;
+avec un seuil *k* réglé, participants d'une cellule et d'une maille de niveau 6 sous *k* →
+`"low"`, messages et présences chiffrés ; sans seuil (défaut), une personne seule comptée ; deltas (rien si inchangé, seule
+la cellule modifiée, `removed`, `seq`, `hello` après coup) ; **vie privée** de bout en bout
+(`TestRelay`, `Monitor`, descente) : 8 événements signés dont le contenu et un tag `n`
+portent un marqueur, ni marqueur, ni pubkey, ni id, ni signature, ni `npub`, ni suite de
+64 caractères hexadécimaux dans `hello` ni dans les deltas.
 
 ### Lot 13 : serveur axum ⬜
 
@@ -225,8 +237,8 @@ et en HTTP/1.1 ; flux SSE reçu en TLS ; plusieurs flux SSE sur une seule connex
 - [ ] Tuiles : URL configurable (`--tiles`, défaut `https://tile.openstreetmap.org/{z}/{x}/{y}.png`),
       attribution toujours affichée (`--tiles-attribution`, défaut OSM).
 - [ ] Un rectangle par canal (bbox fournie par le serveur, pas de décodage geohash en JS),
-      couleur selon l'échelle choisie : participants ou messages (D16) ; « faible » (sous *k*)
-      hachuré sans chiffre ; canal retiré : contour gris pointillé, sans remplissage ; canal
+      couleur selon l'échelle choisie : participants ou messages (D16) ; « faible » (sous *k*, si un
+      seuil est réglé) hachuré ; canal retiré : contour gris pointillé, sans remplissage ; canal
       sans activité dans la fenêtre : contour seul.
 - [ ] **Niveaux superposés** : `u09` profondeur 2 affiche 32 cellules 4c et 1 024 cellules 5c
       au même endroit. Sélecteur de niveau (un niveau visible à la fois, le plus fin par
@@ -267,7 +279,7 @@ Tests : commandes couvertes au lot 13 ; parcours manuel au lot 18 (liste à coch
       la plateforme (les deux apps / une seule), anneau pour les relais aux mêmes coordonnées,
       comme `geohash_map overlay`. Survol d'une cellule → traits vers ses relais.
 - [ ] Calque « mailles » : somme des enfants (`MeshStats`) au niveau choisi, niveau 3 compris,
-      distincte de l'activité propre du canal ; *k* appliqué comme pour les cellules.
+      distincte de l'activité propre du canal ; *k* (s'il est réglé) appliqué comme pour les cellules.
 
 Tests (`tests/model.rs`) : `RelayView` d'un relais aux coordonnées partagées ; `MeshView` sous
 *k* → `"low"`.
@@ -323,6 +335,7 @@ Fini quand : tous les critères d'acceptation de la spec sont vérifiés, naviga
 | D17 | TLS ? | Optionnel : certificat et clé fournis (`--tls-cert`, `--tls-key`, ex. `mkcert`), HTTP/1.1 et HTTP/2 par ALPN (`tokio-rustls` + `hyper-util`) ; obligatoire avec `--allow-remote` sauf `--insecure-remote` (WARN) ; certificat autosigné généré (`rcgen`) reporté à l'étape 3 | ✅ |
 | D18 | Liste iOS où un hôte figure à deux coordonnées (l'app la refuse) | Refusée comme l'app : WARN et repli sur la dernière liste valide en base ; acceptée avec WARN s'il n'y en a aucune | ✅ |
 | D19 | Coordonnées hors bornes (Android les accepte) | Ligne rejetée et comptée, comme avant | ✅ |
+| D20 | Cellule (ou maille) de niveau 6 sous *k* : que montrer ? | Tous les chiffres, participants compris : seuil *k* désactivé par défaut (`k_threshold` = 0), gardé en option (il ne masque alors que les participants) ; spec §5 et invariant 1 corrigés | ✅ |
 
 ## Risques
 
@@ -356,3 +369,5 @@ Fini quand : tous les critères d'acceptation de la spec sont vérifiés, naviga
 | 27/10/2026 | 11 | `ListenPlan::extend`, `Monitor::descend` / `watch_channels` / `relays` / `subscribe`, migration `0002_channel_origin`. Probe des nouveaux relais en tâche de fond plutôt qu'avant l'écoute (pas d'attente au clic). 108 tests (104 sans la feature), stables sur 3 lancements. **Boucle fermée** sur `wss://relay.famillevital.club` : `watch u09tv --depth 0`, `descend u09tv` (32 canaux ajoutés sur la connexion ouverte, sans reconnexion), kind 20000 publié par `nak` avec une clé jetable dans `u09tvw` → compté dans `u09tvw` seul. |
 | 27/10/2026 | — | Lot 11 commité (`730dd49`). Nouveau lot 11 bis : report des corrections de sélection de bitchat-envelope. D18 (liste iOS en conflit refusée, repli) et D19 (rejet des coordonnées hors bornes) validées. |
 | 27/10/2026 | 11 bis | Sélection des relais corrigée (une règle par app, plus d'ex æquo, `Selected.android: Vec<usize>`, union par serveur) ; D18 (liste iOS en conflit refusée, repli sur la dernière valide, au rechargement la liste courante est gardée) ; D19. Résultats identiques à `geohash_map` corrigé sur `u09tv`, `u0`, `9q8yy`, `gcpvj`, `u1`, `gb`, `9q` ; `9q8yy` passe de 10 à 8 serveurs. 117 tests (113 sans la feature), stables sur 3 lancements ; clippy propre dans les deux configurations. Listes officielles du jour : iOS identique à `tests/data/` (sans conflit) ; `watch u09tv` réel : 8 serveurs, un relais mis de côté (`dead`). |
+| 27/10/2026 | — | Lot 11 bis commité (`98a72e8`). |
+| 27/10/2026 | 12 | `server::model` : vues, `Push` (SSE), `Published` (deltas). D20 validée : tous les chiffres affichés, seuil *k* désactivé par défaut (`k_threshold` 3 → 0, gardé en option ; seuls les participants passent à `"low"` s'il est réglé) ; spec §5 et invariant 1 corrigés. 123 tests (114 sans la feature), stables sur 3 lancements ; clippy propre dans les deux configurations. |

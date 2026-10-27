@@ -144,6 +144,7 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
   `relays()`, change notifications (`subscribe`).
 - `src/server/` (feature `server`, on by default): axum router; `assets.rs` lists the files
   built into the binary from `src/server/assets/` (page, `app.js`, `app.css`, Leaflet).
+  `model.rs`: the JSON views sent to the browser, SSE messages and deltas.
 - `src/main.rs`: the `bitchat-geohash` binary (`required-features = ["server"]`).
 - `examples/watch.rs`, `tests/`, `tests/data/`, `swift/`.
 
@@ -151,8 +152,9 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
 
 1. **No personal data leaves memory.** `CellStats`, the database schema, logs and anything
    sent to a UI hold counts only: no pubkey, no nickname, no message content. Pubkeys are kept
-   in memory only for the aggregation window. Below *k* participants at level 6, the count is
-   hidden. A test asserts the schema has no forbidden column; extend it, and the snapshot
+   in memory only for the aggregation window. Counts are shown at every level (D20); an
+   optional *k* threshold (`k_threshold`, default 0 = none) hides participant counts below *k*
+   at level 6. A test asserts the schema has no forbidden column; extend it, and the snapshot
    tests, when you add fields.
 2. **Read-only on relays.** Never publish an event, never answer NIP-42 AUTH (the app does
    not). `CLOSED auth-required:` marks the relay unusable, without retry.
@@ -185,7 +187,9 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
   `assets.rs`. Only the map tiles come from outside.
 - Page text, like logs, is in English. Strings from relays or relay lists go through
   `textContent` (`el()` in `app.js`), never `innerHTML`.
-- What the browser receives obeys invariant 1: counts only.
+- What the browser receives obeys invariant 1: counts only. Everything goes through `server::model`,
+  built field by field from the library types (no `serde` on them); a new field gets its
+  line in the privacy test (`tests/model.rs`). With a k threshold set, a hidden participant count is `"low"`.
 
 ## BitChat protocol gotchas
 

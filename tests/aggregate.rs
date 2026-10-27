@@ -179,9 +179,26 @@ fn window_slides_on_created_at() {
 }
 
 #[test]
-fn small_counts_are_hidden_at_level_6_only() {
+fn small_counts_are_shown_by_default() {
+    let alice = Identity::generate();
+    let mut agg = watching(&["u09tvq"]);
+    agg.observe(
+        &from(RELAYS[0], &event(&alice, "u09tvq", KIND_GEO_MESSAGE, T0)),
+        T0,
+    )
+    .unwrap();
+    let stats = agg.snapshot(T0 + 10, &plan(&["u09tvq"]), &BTreeMap::new());
+    assert_eq!(stats[0].participants, Some(1), "no k threshold (D20)");
+}
+
+#[test]
+fn small_counts_are_hidden_at_level_6_only_with_a_threshold() {
     let people: Vec<Identity> = (0..3).map(|_| Identity::generate()).collect();
-    let mut agg = watching(&["u09tvq", "u09tv"]);
+    let mut agg = Aggregator::new(AggregatorConfig {
+        k_threshold: 3,
+        ..AggregatorConfig::default()
+    });
+    agg.watch(&["u09tvq", "u09tv"], T0);
     for (i, who) in people.iter().enumerate().take(2) {
         agg.observe(
             &from(

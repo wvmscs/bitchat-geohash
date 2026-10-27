@@ -117,8 +117,9 @@ sur une carte OpenStreetMap.
 * Aucun suivi d'une pubkey d'une cellule à l'autre.
 * Aucun contenu de message n'est stocké ; les pubkeys ne sont gardées en mémoire que le temps
   de la fenêtre.
-* Au niveau 6, les cellules de moins de *k* participants (défaut 3) sont affichées comme
-  « activité faible », sans chiffre.
+* Tous les compteurs sont affichés, niveau 6 compris (D20 de l'étape 2). Un seuil *k* reste
+  disponible en option (`AggregatorConfig::k_threshold`, défaut 0 = aucun) : au niveau 6, une
+  cellule de moins de *k* participants affiche alors « activité faible » au lieu de leur nombre.
 
 ## Plan
 
