@@ -187,6 +187,7 @@ pub async fn serve(
         .route("/api/state", get(api::state))
         .route("/api/events", get(api::events))
         .route("/api/descend", post(api::descend))
+        .route("/api/preview", post(api::preview))
         .route("/api/reinstate", post(api::reinstate))
         .with_state(state)
         .merge(router())

@@ -373,3 +373,154 @@ async fn descents_survive_a_relay_list_reload() {
     .await;
     monitor.shutdown().await.unwrap();
 }
+
+/// Waits until `count` channels are watched.
+async fn watched_until(monitor: &Monitor, count: usize) {
+    for _ in 0..150 {
+        if monitor.status().await.unwrap().watched.len() == count {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    panic!("never {count} watched channels");
+}
+
+#[tokio::test]
+async fn previews_listen_for_a_while_and_save_nothing() {
+    let (logs, _guard) = Logs::capture();
+    let relay = TestRelay::spawn("127.0.0.1:0").await.unwrap();
+    let clock = TestClock::new();
+    let mut cfg = config("u09t", &clock);
+    cfg.preview_for = Duration::from_secs(300);
+    let monitor = Monitor::start(
+        cfg,
+        Some(directory_of(&[relay.url()])),
+        None,
+        Store::open_in_memory().unwrap(),
+    )
+    .await
+    .unwrap();
+    status_until(&monitor, "connected", connected).await;
+    let mut events = monitor.subscribe();
+
+    let added = monitor.preview("u09tv").await.unwrap();
+    assert_eq!(added.len(), 32);
+    next_event(&mut events, |e| matches!(e, MonitorEvent::Added(_))).await;
+    let snap = monitor.snapshot().await.unwrap();
+    assert_eq!(snap.iter().filter(|c| c.preview).count(), 32);
+    assert!(
+        !snap
+            .iter()
+            .any(|c| c.preview && !c.geohash.starts_with("u09tv"))
+    );
+    // Already previewed: the delay is extended, nothing added. Channels
+    // already watched are not previewed.
+    assert!(monitor.preview("u09tv").await.unwrap().is_empty());
+    assert!(monitor.preview("u09t").await.unwrap().is_empty());
+    assert_eq!(logs.info_lines("preview of u09tv: 32 channels"), 1);
+
+    // An event there is counted.
+    status_until(&monitor, "connected", connected).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    relay.publish(message(&Identity::generate(), "u09tvq", clock.get()));
+    for _ in 0..150 {
+        let snap = monitor.snapshot().await.unwrap();
+        if snap
+            .iter()
+            .any(|c| c.geohash == "u09tvq" && c.messages == 1)
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+
+    // Past the delay, the preview ends: the channels leave the plan, they
+    // are not retired.
+    clock.set(clock.get() + 300);
+    match next_event(&mut events, |e| matches!(e, MonitorEvent::Removed(_))).await {
+        MonitorEvent::Removed(gone) => assert_eq!(gone, added),
+        _ => unreachable!(),
+    }
+    let s = monitor.status().await.unwrap();
+    assert_eq!((s.watched.len(), s.retired.len()), (33, 0));
+    assert_eq!(monitor.snapshot().await.unwrap().len(), 33);
+    assert_eq!(logs.info_lines("preview of u09tv ended (delay over)"), 1);
+
+    let store = monitor.shutdown().await.unwrap();
+    assert!(store.descents().unwrap().is_empty());
+    relay.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_descent_keeps_the_previewed_channels() {
+    let relay = TestRelay::spawn("127.0.0.1:0").await.unwrap();
+    let clock = TestClock::new();
+    let monitor = Monitor::start(
+        config("u09t", &clock),
+        Some(directory_of(&[relay.url()])),
+        None,
+        Store::open_in_memory().unwrap(),
+    )
+    .await
+    .unwrap();
+    let previewed = monitor.preview("u09tv").await.unwrap();
+    let kept = monitor.descend("u09tv").await.unwrap();
+    assert_eq!(kept, previewed);
+    assert!(!monitor.snapshot().await.unwrap().iter().any(|c| c.preview));
+    // No longer a preview: nothing ends after the delay.
+    clock.set(clock.get() + 300);
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(monitor.status().await.unwrap().watched.len(), 65);
+    let store = monitor.shutdown().await.unwrap();
+    assert_eq!(store.descents().unwrap(), kept);
+    relay.shutdown().await;
+}
+
+#[tokio::test]
+async fn previews_give_way_when_room_is_needed() {
+    let relay = TestRelay::spawn("127.0.0.1:0").await.unwrap();
+    let clock = TestClock::new();
+    let mut cfg = config("u09t", &clock);
+    cfg.max_channels = 33 + 32 + 32;
+    let monitor = Monitor::start(
+        cfg,
+        Some(directory_of(&[relay.url()])),
+        None,
+        Store::open_in_memory().unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(monitor.preview("u09tu").await.unwrap().len(), 32);
+    clock.set(clock.get() + 10);
+    assert_eq!(monitor.preview("u09tv").await.unwrap().len(), 32);
+    // A third preview ends the oldest one.
+    assert_eq!(monitor.preview("u09tw").await.unwrap().len(), 32);
+    let previewed: Vec<String> = monitor
+        .snapshot()
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|c| c.preview)
+        .map(|c| c.geohash[..5].to_owned())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    assert_eq!(previewed, ["u09tv", "u09tw"]);
+    // A descent too, and it fails only if previews cannot make room.
+    assert_eq!(monitor.descend("u09ty").await.unwrap().len(), 32);
+    watched_until(&monitor, 33 + 32 + 32).await;
+    assert_eq!(monitor.descend("u09tz").await.unwrap().len(), 32);
+    assert!(!monitor.snapshot().await.unwrap().iter().any(|c| c.preview));
+    // No preview left to end: refused, and nothing changed.
+    assert!(matches!(
+        monitor.descend("u09tx").await,
+        Err(Error::TooManyChannels { .. })
+    ));
+    assert!(matches!(
+        monitor.preview("u09tx").await,
+        Err(Error::TooManyChannels { .. })
+    ));
+    assert_eq!(monitor.status().await.unwrap().watched.len(), 97);
+    monitor.shutdown().await.unwrap();
+    relay.shutdown().await;
+}

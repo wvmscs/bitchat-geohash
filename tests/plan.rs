@@ -330,3 +330,34 @@ fn extend_with_an_invalid_channel_changes_nothing() {
     assert_eq!(p.len(), 1);
     assert!(before.diff(&p).is_empty());
 }
+
+#[test]
+fn removing_channels_only_touches_their_groups() {
+    let dir = RelayDirectory::parse(
+        "Relay URL,Latitude,Longitude\nwss://a.example,48.85,2.35\nwss://b.example,-33.9,151.2\n",
+        Platform::Ios,
+    );
+    let mut p =
+        ListenPlan::build(Some(&dir), None, &strings(&["u09tu", "u09tv"]), small()).unwrap();
+    let before = p.clone();
+    p.extend(Some(&dir), None, &strings(&["u09ty", "u09tz", "u09tw"]))
+        .unwrap();
+    // Groups: [u09tu u09tv u09ty] [u09tz u09tw].
+    let removed = p.remove(&["u09ty", "u09tz", "u09tw", "u09tx"]);
+    assert_eq!(removed, ["u09tw", "u09ty", "u09tz"]);
+    assert_eq!(p.len(), 2);
+    assert!(!p.contains("u09ty"));
+    // Back to the subscriptions before the preview; the emptied last
+    // group is gone, so a later extend reuses its index.
+    assert!(before.diff(&p).is_empty());
+    p.extend(Some(&dir), None, &strings(&["u09tz"])).unwrap();
+    let ids: Vec<String> = p
+        .subscriptions("wss://a.example")
+        .into_iter()
+        .map(|s| s.id)
+        .collect();
+    assert_eq!(ids, ["geo0"]);
+    // A relay left without any channel leaves the plan.
+    assert!(p.remove(&["u09tu", "u09tv", "u09tz"]).len() == 3);
+    assert!(p.all_relays().is_empty() && p.is_empty());
+}

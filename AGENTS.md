@@ -179,7 +179,8 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
    (default 15 min) leaves the filters, and is reinstated only on explicit request. Every
    retirement and reinstatement is logged at INFO. The state survives a restart.
    Channels added by a descent survive a restart too (`origin = 'descent'`), unless
-   `forget_descents`.
+   `forget_descents`. Preview channels (`Monitor::preview`, D21) are the exception: never
+   saved nor retired, they leave the plan when the preview ends (`MonitorEvent::Removed`).
 6. **Count each event once.** Deduplicate by event `id` across relays; reject bad signatures,
    kinds other than 20000/20001 and `g` tags outside the plan.
 7. **Reproducible tests.** Tests use the frozen CSVs and an injected clock; they never
@@ -199,6 +200,14 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
   them with `--tls-cert` / `--tls-key`. HTTP/2 then carries every SSE stream of the browser on
   one connection (HTTP/1.1 allows 6 per host). Never commit these files. A non-local address
   needs `--allow-remote` and TLS, or `--insecure-remote`.
+- Tiles must be requested with a `Referer` (OSM tile policy): the tile layer sets
+  `referrerPolicy: "strict-origin-when-cross-origin"`, overriding the page's `no-referrer`.
+  Without it Firefox gets 403 "Access blocked".
+- Hovering a watched cell previews the level below (`POST /api/preview`, D21): the page
+  draws those channels inside the cell with `interactive: false`, so the hover stays on the
+  cell. Going up a level (list or URL) refits the map to the coarser cells in view.
+- On the map, every rectangle has a fill, transparent when there is no colour: in SVG the
+  inside of an unfilled shape takes no hover nor click.
 - Every route goes through `guard.rs`: `Host` checked (DNS rebinding), `POST` only with JSON and
   the server's own `Origin`, CSP. Keep it that way for new routes; a refusal is logged.
 - What the browser receives obeys invariant 1: counts only. Everything goes through `server::model`,

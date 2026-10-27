@@ -191,6 +191,20 @@ pub(crate) async fn descend(
     Ok(Json(json!({ "added": added })))
 }
 
+/// `POST /api/preview {"geohash": "u09tv"}`: listens for a while to the
+/// channels below (D21).
+pub(crate) async fn preview(
+    State(s): State<AppState>,
+    body: Result<Json<DescendBody>, JsonRejection>,
+) -> Result<Json<Value>, ApiError> {
+    let Json(body) = body?;
+    tracing::debug!(geohash = %body.geohash, "command: preview");
+    let added = s.monitor.preview(&body.geohash).await.inspect_err(|e| {
+        tracing::info!(geohash = %body.geohash, error = %e, "preview refused");
+    })?;
+    Ok(Json(json!({ "added": added })))
+}
+
 #[derive(Deserialize)]
 pub(crate) struct ReinstateBody {
     #[serde(default)]

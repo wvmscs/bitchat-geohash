@@ -291,6 +291,36 @@ async fn descent_by_post_reaches_the_stream() {
 }
 
 #[tokio::test]
+async fn preview_by_post_reaches_the_stream() {
+    let r = Running::start(|_, _| {}).await;
+    let mut sse = SseReader::open(&r.url("/api/events")).await;
+    sse.next().await.unwrap();
+    let (status, body) = r.post("/api/preview", r#"{"geohash":"u09tv"}"#).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["added"].as_array().unwrap().len(), 32);
+    let (_, delta) = sse
+        .until("cells", |d| cell(&d["cells"], "u09tvw").is_some())
+        .await;
+    assert_eq!(cell(&delta["cells"], "u09tvw").unwrap()["preview"], true);
+    let (status, body) = r.post("/api/preview", r#"{"geohash":"u0b"}"#).await;
+    assert_eq!((status, &body["error"]), (422, &json!("outside_area")));
+    // The preview ends: the cells are removed from the page.
+    r.clock.set(r.clock.get() + 300);
+    let (_, removed) = sse
+        .until("removed", |d| {
+            d["cells"].as_array().is_some_and(|c| c.len() == 32)
+        })
+        .await;
+    assert!(
+        removed["cells"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("u09tvw"))
+    );
+    r.stop().await;
+}
+
+#[tokio::test]
 async fn refused_commands_say_why() {
     let r = Running::start(|c, _| c.max_channels = 40).await;
     let (status, body) = r.post("/api/descend", r#"{"geohash":"u09tv"}"#).await;

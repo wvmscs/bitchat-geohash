@@ -18,7 +18,7 @@ Règle : seuls les fichiers de `bitchat-geohash/` sont modifiés ; le dépôt re
 | 13 | Serveur axum : page, état, flux SSE, commandes, protections | ✅ |
 | 13 bis | TLS optionnel, HTTP/1.1 et HTTP/2 | ✅ |
 | 14 | Page carte : cellules, échelle, survol, niveaux | ✅ |
-| 15 | Interaction : descente au clic, réintégration, remontée | ⬜ |
+| 15 | Interaction : descente au clic, réintégration, remontée | ✅ |
 | 16 | Calques relais et mailles (somme des enfants) | ⬜ |
 | 17 | CLI `bitchat-geohash` | ⬜ |
 | 18 | Validation sur le réseau réel et dans le navigateur | ⬜ |
@@ -292,8 +292,8 @@ adresse distante sans TLS → `Error::RemoteWithoutTls`.
 - [x] Clair et sombre (`prefers-color-scheme`), utilisable à 360 px ; textes en anglais ;
       icône vide (`data:,`) pour éviter la requête `favicon.ico`.
 
-Écarts : la CSP autorise `data:` pour les images (image vide de Leaflet pour les tuiles en
-erreur, bloquée sinon). Les tuiles OSM se chargent malgré `Referrer-Policy: no-referrer`.
+Écarts : les tuiles reçoivent l'origine de la page comme `Referer` (sinon OSM répond 403 sous Firefox, voir le journal). La CSP autorise `data:` pour les images (image vide de Leaflet pour les tuiles en
+erreur, bloquée sinon). 
 
 Vérifié dans Chrome headless piloté par le protocole DevTools (script hors dépôt), sur le
 réseau réel, `u09` profondeur 2 (1 056 canaux) : **1 024 rectangles dessinés en 150 à 410 ms**
@@ -303,18 +303,45 @@ gêne en local ; compression ou relais par référence à envisager si la page s
 À vérifier à la main au lot 18 : message des 7 onglets en HTTP/1.1, reconnexion après un
 redémarrage du serveur.
 
-### Lot 15 : interaction ⬜
+### Lot 15 : interaction ✅
 
-- [ ] Clic sur une cellule surveillée : menu « Descendre » (lot 11) ; refus du serveur
-      (plafond) affiché avec l'effectif réel.
-- [ ] Clic sur une cellule retirée : « Réintégrer » ; bouton global « Tout réintégrer »
-      (confirmation) (D15).
-- [ ] Après une descente, la vue passe au niveau des enfants et cadre la cellule ; fil
-      d'Ariane des niveaux pour remonter (affichage seulement, la descente n'est pas annulée).
-- [ ] Échelle et niveau choisis gardés dans l'URL (`#level=5&scale=participants`), pour
-      partager une vue entre onglets.
+- [x] Clic sur une cellule surveillée : menu « Descend to level N » (lot 11) ; refus du
+      serveur affiché en clair, avec l'effectif réel pour le plafond (`refusalText`) ; au
+      niveau 7 : « finest channel level: nothing below ».
+- [x] Clic sur une cellule retirée : « Reinstate » ; bouton « Reinstate all retired
+      channels » dans le panneau quand il y en a, avec confirmation (D15).
+- [x] Après une descente, la vue passe au niveau des enfants et cadre la cellule ; fil
+      d'Ariane `#départ (all) › #u09t0 › #u09t00` pour remonter (affichage seulement, la
+      descente n'est pas annulée) ; « (all) » revient au niveau affiché avant la première
+      descente.
+- [x] Remontée depuis le menu de la cellule (demande du 27/10/2026 : seule la descente y
+      figurait) : un bouton par niveau supérieur dessiné, du plus proche au plus lointain
+      (« Up to #u09t00 · level 6 », « Up to #u09t0 · level 5 »…) ; affiche ce niveau, cadré sur
+      la cellule parente.
+- [x] Remontée par la liste des niveaux (ou l'URL) : la carte se recadre sur les cellules
+      du niveau choisi visibles à l'écran, entières (demande du 27/10/2026 : l'échelle de la
+      carte restait celle du niveau fin).
+- [x] **Aperçu au survol** (D21, demande du 27/10/2026) : survoler une cellule surveillée
+      400 ms demande au serveur d'écouter pour un temps les canaux du niveau inférieur
+      (`POST /api/preview`, `Monitor::preview`) ; ils sont dessinés dans la cellule, sur leur
+      propre échelle, sans capter le pointeur, et l'infobulle résume « level 6 below: N active
+      / 32, messages, presences ». Rien n'est enregistré ; les canaux quittent le plan 5 min
+      après la dernière demande (`preview_for`), ne sont jamais « retirés », cèdent la place
+      (le plus ancien d'abord) sous le plafond, et une descente les garde.
+- [x] Échelle et niveau gardés dans l'URL (`#level=5&scale=participants`), lus au chargement et
+      à chaque changement d'URL (lien partagé entre onglets).
+- [x] **Défaut corrigé** (trouvé en testant) : une cellule sans couleur était dessinée sans
+      remplissage, et en SVG l'intérieur d'une forme non remplie ne reçoit ni survol ni clic ;
+      elle a maintenant un remplissage transparent.
 
-Tests : commandes couvertes au lot 13 ; parcours manuel au lot 18 (liste à cocher dans le journal).
+Tests : commandes couvertes au lot 13 ; fonctions pures (`childLevel`, `ancestors`,
+`parseHash`, `formatHash`, `refusalText`) dans `tests/js/view.test.mjs` (6 tests `node`).
+Parcours vérifié dans Chrome headless piloté par DevTools (script hors dépôt), sur le réseau
+réel, `u09t` : vue lue dans l'URL, descente ville → quartier → bloc par clics (32 canaux
+ajoutés à chaque fois côté serveur, niveau, URL et fil d'Ariane à jour), menu du niveau 7,
+remontée par le fil d'Ariane et « (all) », changement d'URL externe appliqué, console sans
+erreur. Restent pour le parcours manuel du lot 18 : refus au plafond affiché (le binaire n'a
+pas encore `--max-cells`), réintégration d'une cellule retirée (15 min d'inactivité).
 
 ### Lot 16 : calques relais et mailles ⬜
 
@@ -380,6 +407,7 @@ Fini quand : tous les critères d'acceptation de la spec sont vérifiés, naviga
 | D18 | Liste iOS où un hôte figure à deux coordonnées (l'app la refuse) | Refusée comme l'app : WARN et repli sur la dernière liste valide en base ; acceptée avec WARN s'il n'y en a aucune | ✅ |
 | D19 | Coordonnées hors bornes (Android les accepte) | Ligne rejetée et comptée, comme avant | ✅ |
 | D20 | Cellule (ou maille) de niveau 6 sous *k* : que montrer ? | Tous les chiffres, participants compris : seuil *k* désactivé par défaut (`k_threshold` = 0), gardé en option (il ne masque alors que les participants) ; spec §5 et invariant 1 corrigés | ✅ |
+| D21 | Aperçu du niveau inférieur au survol : écoute durable ou temporaire ? | Temporaire : canaux ajoutés au plan sans rien enregistrer, retirés du plan 5 min après la dernière demande (pas « retirés » au sens de l'invariant 5, qui ne vaut que pour les canaux surveillés pour de bon) ; ils comptent dans le plafond mais cèdent la place, le plus ancien d'abord, à un autre aperçu ou à une descente ; une descente les rend permanents. Délai d'appui 400 ms côté page, au plus une demande par cellule et par minute. Limite : les événements sont éphémères, l'aperçu ne montre que l'activité qui arrive pendant l'écoute (plus le peu que `since` ramène) | ✅ (à valider par l'utilisateur) |
 
 ## Risques
 
@@ -422,3 +450,7 @@ Fini quand : tous les critères d'acceptation de la spec sont vérifiés, naviga
 | 27/10/2026 | — | Lot 13 bis commité (`cbcdaaa`). |
 | 27/10/2026 | 14 | Page carte : `app.js` (couches par niveau, mise à jour en place, infobulle, panneau, flux SSE et reprise), `view.js` (fonctions pures, test `node`), `app.css` (clair/sombre, 360 px). Binaire : `--depth`, `--tiles`, `--tiles-attribution`. CSP : `data:` autorisé pour les images. 137 tests Rust (114 sans la feature), stables sur 3 lancements ; 3 tests `node`. Chrome headless sur `u09` profondeur 2 réel : 1 024 rectangles en moins de 0,5 s, console propre ; `hello` de 1,3 Mo noté comme risque. |
 | 27/10/2026 | — | Lot 14 commité (`baed9df`). Vérification réelle sur `#u09ky` (2 participants affichés) avec `nak` et l'app iOS 1.8.0 de l'utilisateur : compte juste (l'utilisateur et `anon#9113`, présent sans écrire). Lu dans le code iOS : les présences ne partent que vers les canaux de la position GPS réelle, jamais vers un canal téléporté ; même clé par geohash pour présences et messages. Spec (« Présence partielle ») et `AGENTS.md` complétés. |
+| 27/10/2026 | 15 | Menu au clic (descendre, réintégrer), « Reinstate all » avec confirmation, fil d'Ariane, vue dans l'URL. Défaut corrigé : cellules sans couleur non cliquables (intérieur SVG non rempli). 137 tests Rust (114 sans la feature), 6 tests `node`. Parcours dans Chrome headless sur `u09t` réel : descentes jusqu'au niveau 7, remontée, URL, console propre. |
+| 27/10/2026 | 15 | Remontée ajoutée au menu de la cellule (un bouton par niveau supérieur), à la demande de l'utilisateur. Vérifié dans Chrome headless : bloc → « Up to … level 5 » affiche le niveau 5 cadré sur la ville parente, console propre. |
+| 27/10/2026 | 14 | **Défaut corrigé** (signalé sous Firefox) : tuiles OSM « Access blocked » (403). La page envoie `Referrer-Policy: no-referrer`, que Firefox applique aux tuiles, or la politique d'usage d'OSM exige un `Referer`. Les tuiles seules reçoivent désormais l'origine de la page (option Leaflet `referrerPolicy: strict-origin-when-cross-origin`), jamais le chemin ni le `#level` ; le reste garde `no-referrer`. Vérifié dans Chrome (DevTools) : 12 requêtes de tuiles avec `Referer: http://127.0.0.1:…/`, toutes en 200. |
+| 27/10/2026 | 15 | Demandes de l'utilisateur : (1) remonter recadre la carte (liste des niveaux, URL) ; (2) **aperçu au survol** (D21) : `ListenPlan::remove`, `Aggregator::forget`, `Monitor::preview`, `MonitorConfig::preview_for` (5 min), `MonitorEvent::Removed`, `CellStats.preview` / `CellView.preview`, `POST /api/preview` ; page : survol de 400 ms → aperçu dessiné dans la cellule, résumé dans l'infobulle, niveau vidé par la fin d'un aperçu → niveau plus grossier. 142 tests Rust (118 sans la feature), nouveaux tests stables sur 3 lancements ; 8 tests `node` ; clippy propre. Chrome headless sur `u09t` réel : survol de `#u09th` → 32 canaux en aperçu côté serveur, 32 rectangles dans la cellule, infobulle « listening… » puis « 0 active / 32 … (preview …) », rien après la sortie du pointeur ; liste 6 → 4 : cellule de 32 px à 1 024 px ; console propre. |

@@ -58,6 +58,8 @@ pub struct MonitorConfig {
     pub forget_descents: bool,
     /// Relay list reload period, with [`Monitor::start_from_sources`].
     pub reload_every: Duration,
+    /// How long a preview lasts after its latest request (D21).
+    pub preview_for: Duration,
 }
 
 impl MonitorConfig {
@@ -77,6 +79,7 @@ impl MonitorConfig {
             reinstate_all: false,
             forget_descents: false,
             reload_every: Duration::from_secs(24 * 3600),
+            preview_for: Duration::from_secs(300),
         }
     }
 }
@@ -199,6 +202,8 @@ pub enum MonitorEvent {
     Added(Vec<String>),
     Retired(Vec<String>),
     Reinstated(Vec<String>),
+    /// Channels of an ended preview, no longer in the plan.
+    Removed(Vec<String>),
     /// A relay verdict or connection state changed.
     RelaysChanged,
     /// New relay lists gave a new plan.
@@ -212,6 +217,7 @@ enum Command {
     Reinstate(Vec<String>, oneshot::Sender<Vec<String>>),
     Watch(Vec<String>, oneshot::Sender<Result<Vec<String>>>),
     Descend(String, oneshot::Sender<Result<Vec<String>>>),
+    Preview(String, oneshot::Sender<Result<Vec<String>>>),
     Relays(oneshot::Sender<Vec<RelayInfo>>),
     ReinstateAll(oneshot::Sender<Vec<String>>),
     Snapshot(oneshot::Sender<Vec<CellStats>>),
@@ -470,6 +476,7 @@ impl Monitor {
             reload_tx,
             probed_tx,
             events: events.clone(),
+            previews: BTreeMap::new(),
         };
         let task = tokio::spawn(state.run(rx, events_rx, reload_rx, probed_rx));
         Ok(Monitor { tx, events, task })
@@ -501,6 +508,18 @@ impl Monitor {
     pub async fn descend(&self, geohash: &str) -> Result<Vec<String>> {
         let g = geohash.to_owned();
         self.ask(|r| Command::Descend(g, r)).await?
+    }
+
+    /// Listens for a while to the channels of the next channel level
+    /// inside `geohash`, to see their activity before a descent (D21).
+    /// Nothing is saved: the channels added leave the plan
+    /// [`MonitorConfig::preview_for`] after the latest request for this
+    /// cell, unless [`Monitor::descend`] keeps them. Previews give way,
+    /// oldest first, when room is needed under `max_channels`. Returns the
+    /// channels added (none for a cell already previewed or descended into).
+    pub async fn preview(&self, geohash: &str) -> Result<Vec<String>> {
+        let g = geohash.to_owned();
+        self.ask(|r| Command::Preview(g, r)).await?
     }
 
     /// Watches these channels (inside the watched area, of a channel
@@ -569,6 +588,16 @@ struct State {
     /// Verdicts of relays probed after a descent.
     probed_tx: mpsc::UnboundedSender<BTreeMap<String, Verdict>>,
     events: broadcast::Sender<MonitorEvent>,
+    /// Cell -> its preview (D21).
+    previews: BTreeMap<String, Preview>,
+}
+
+/// Channels listened to for a while below a cell (D21).
+struct Preview {
+    /// The channels it added (not those already watched), not saved.
+    channels: Vec<String>,
+    /// Ends at this time, unless asked again.
+    until: i64,
 }
 
 impl State {
@@ -754,8 +783,10 @@ impl State {
         let _ = self.events.send(event);
     }
 
-    /// Adds channels to the plan and listens to them at once; their new
-    /// relays are probed in the background (see `on_probed`).
+    /// Adds channels to the plan for good (descent, or on request) and
+    /// listens to them at once. Previewed channels among them stay, and are
+    /// saved like the others; previews are ended, oldest first, if room is
+    /// needed. Fails over `max_channels` without changing anything.
     fn add(&mut self, channels: &[String]) -> Result<Vec<String>> {
         for g in channels {
             if Level::of(g).is_none() {
@@ -775,22 +806,38 @@ impl State {
             .collect::<std::collections::BTreeSet<_>>()
             .into_iter()
             .collect();
+        let wanted: std::collections::BTreeSet<&str> =
+            channels.iter().map(String::as_str).collect();
+        let evictable = self
+            .previews
+            .values()
+            .flat_map(|p| &p.channels)
+            .filter(|c| !wanted.contains(c.as_str()))
+            .count();
         let count = self.plan.len() + fresh.len();
-        if count > self.config.max_channels {
+        if count - evictable.min(count) > self.config.max_channels {
             return Err(Error::TooManyChannels {
                 count: count as u64,
                 max: self.config.max_channels,
             });
         }
-        let before: std::collections::BTreeSet<String> =
-            self.plan.all_relays().into_iter().collect();
-        let added = self
-            .plan
-            .extend(self.ios.as_ref(), self.android.as_ref(), &fresh)?;
         let now = self.now();
-        self.channels.extend(added.iter().cloned());
-        self.aggregator
-            .watch(&added.iter().map(String::as_str).collect::<Vec<_>>(), now);
+        // Previewed channels become permanent.
+        let mut kept = Vec::new();
+        for p in self.previews.values_mut() {
+            p.channels.retain(|c| {
+                let keep = wanted.contains(c.as_str());
+                if keep {
+                    kept.push(c.clone());
+                }
+                !keep
+            });
+        }
+        self.previews.retain(|_, p| !p.channels.is_empty());
+        self.make_room(fresh.len());
+        let mut added = self.listen(&fresh)?;
+        added.extend(kept);
+        added.sort();
         for g in &added {
             let _ = self.writer.send(Write::Descent {
                 geohash: g.clone(),
@@ -803,10 +850,30 @@ impl State {
             .filter(|g| self.plan.is_retired(g))
             .collect();
         let reinstated = self.reinstate(&retired);
-        if !added.is_empty() {
-            self.listener.sync(&self.plan);
-            self.emit(MonitorEvent::Added(added.clone()));
+        let mut out = added;
+        out.extend(reinstated);
+        out.sort();
+        Ok(out)
+    }
+
+    /// Listens to new channels at once; their new relays are probed in the
+    /// background (see `on_probed`). Saves nothing. Returns the channels
+    /// added.
+    fn listen(&mut self, fresh: &[String]) -> Result<Vec<String>> {
+        let before: std::collections::BTreeSet<String> =
+            self.plan.all_relays().into_iter().collect();
+        let added = self
+            .plan
+            .extend(self.ios.as_ref(), self.android.as_ref(), fresh)?;
+        if added.is_empty() {
+            return Ok(added);
         }
+        let now = self.now();
+        self.channels.extend(added.iter().cloned());
+        self.aggregator
+            .watch(&added.iter().map(String::as_str).collect::<Vec<_>>(), now);
+        self.listener.sync(&self.plan);
+        self.emit(MonitorEvent::Added(added.clone()));
         let new_relays = self
             .plan
             .all_relays()
@@ -823,17 +890,14 @@ impl State {
                 let _ = tx.send(probe_new_relays(&plan, &known, concurrency, timeout).await);
             });
         }
-        let mut out = added;
-        out.extend(reinstated);
-        out.sort();
-        Ok(out)
+        Ok(added)
     }
 
-    fn descend(&mut self, geohash: &str) -> Result<Vec<String>> {
-        let g = normalize(geohash)?;
+    /// The channels of the next channel level inside `g` (normalised).
+    fn children(&self, g: &str) -> Result<Vec<String>> {
         if !g.starts_with(&self.start) {
             return Err(Error::OutsideArea {
-                geohash: g,
+                geohash: g.to_owned(),
                 start: self.start.clone(),
             });
         }
@@ -841,11 +905,90 @@ impl State {
             .iter()
             .copied()
             .find(|l| l.precision() > g.len())
-            .ok_or_else(|| Error::NoFinerLevel(g.clone()))?;
-        let children = enumerate(&g, 1, &[next], self.config.max_channels)?;
+            .ok_or_else(|| Error::NoFinerLevel(g.to_owned()))?;
+        enumerate(g, 1, &[next], self.config.max_channels)
+    }
+
+    fn descend(&mut self, geohash: &str) -> Result<Vec<String>> {
+        let g = normalize(geohash)?;
+        let children = self.children(&g)?;
         let changed = self.add(&children)?;
         tracing::info!(cell = %g, added = changed.len(), "descended into {g}: {} channels added or reinstated", changed.len());
         Ok(changed)
+    }
+
+    /// Listens for a while to the channels of the next level inside
+    /// `geohash` that are not watched yet (D21): nothing is saved, and they
+    /// leave the plan `preview_for` after the latest request, unless a
+    /// descent keeps them. Another request for the same cell only extends
+    /// the delay. Previews are ended, oldest first, if room is needed.
+    /// Returns the channels added.
+    fn preview(&mut self, geohash: &str) -> Result<Vec<String>> {
+        let g = normalize(geohash)?;
+        let children = self.children(&g)?;
+        let until = self.now() + self.config.preview_for.as_secs() as i64;
+        if let Some(p) = self.previews.get_mut(&g) {
+            p.until = until;
+            return Ok(Vec::new());
+        }
+        let fresh: Vec<String> = children
+            .into_iter()
+            .filter(|c| !self.plan.contains(c))
+            .collect();
+        if fresh.is_empty() {
+            return Ok(fresh);
+        }
+        let previewed: usize = self.previews.values().map(|p| p.channels.len()).sum();
+        let count = self.plan.len() + fresh.len();
+        if count - previewed > self.config.max_channels {
+            return Err(Error::TooManyChannels {
+                count: count as u64,
+                max: self.config.max_channels,
+            });
+        }
+        self.make_room(fresh.len());
+        let added = self.listen(&fresh)?;
+        tracing::info!(cell = %g, added = added.len(), "preview of {g}: {} channels listened to for a while", added.len());
+        self.previews.insert(
+            g,
+            Preview {
+                channels: added.clone(),
+                until,
+            },
+        );
+        Ok(added)
+    }
+
+    /// Ends previews, the one expiring first first, until `more` channels
+    /// fit under `max_channels`.
+    fn make_room(&mut self, more: usize) {
+        while self.plan.len() + more > self.config.max_channels {
+            let Some(oldest) = self
+                .previews
+                .iter()
+                .min_by_key(|(_, p)| p.until)
+                .map(|(g, _)| g.clone())
+            else {
+                return;
+            };
+            self.end_preview(&oldest, "room needed");
+        }
+    }
+
+    /// Stops listening to the channels of a preview and forgets them.
+    fn end_preview(&mut self, geohash: &str, why: &str) {
+        let Some(p) = self.previews.remove(geohash) else {
+            return;
+        };
+        let refs: Vec<&str> = p.channels.iter().map(String::as_str).collect();
+        let removed = self.plan.remove(&refs);
+        self.aggregator.forget(&refs);
+        self.channels.retain(|c| !p.channels.contains(c));
+        tracing::info!(cell = %geohash, removed = removed.len(), "preview of {geohash} ended ({why}): {} channels no longer listened to", removed.len());
+        if !removed.is_empty() {
+            self.listener.sync(&self.plan);
+            self.emit(MonitorEvent::Removed(removed));
+        }
     }
 
     /// Verdicts of the relays new after a descent.
@@ -937,7 +1080,25 @@ impl State {
 
     fn on_tick(&mut self) {
         let now = self.now();
-        let inactive = self.aggregator.inactive(now);
+        let expired: Vec<String> = self
+            .previews
+            .iter()
+            .filter(|(_, p)| p.until <= now)
+            .map(|(g, _)| g.clone())
+            .collect();
+        for g in expired {
+            self.end_preview(&g, "delay over");
+        }
+        // Previewed channels leave the plan when the preview ends: they are
+        // never retired.
+        let previewed: std::collections::BTreeSet<&String> =
+            self.previews.values().flat_map(|p| &p.channels).collect();
+        let inactive: Vec<String> = self
+            .aggregator
+            .inactive(now)
+            .into_iter()
+            .filter(|g| !previewed.contains(g))
+            .collect();
         if !inactive.is_empty() {
             let refs: Vec<&str> = inactive.iter().map(String::as_str).collect();
             let retired = self.plan.retire(&refs);
@@ -997,12 +1158,21 @@ impl State {
             Command::Descend(geohash, reply) => {
                 let _ = reply.send(self.descend(&geohash));
             }
+            Command::Preview(geohash, reply) => {
+                let _ = reply.send(self.preview(&geohash));
+            }
             Command::Relays(reply) => {
                 let _ = reply.send(self.relays());
             }
             Command::Snapshot(reply) => {
                 let now = self.now();
-                let _ = reply.send(self.aggregator.snapshot(now, &self.plan, &self.verdicts));
+                let mut cells = self.aggregator.snapshot(now, &self.plan, &self.verdicts);
+                for p in self.previews.values() {
+                    for c in cells.iter_mut().filter(|c| p.channels.contains(&c.geohash)) {
+                        c.preview = true;
+                    }
+                }
+                let _ = reply.send(cells);
             }
             Command::Mesh(precision, reply) => {
                 let now = self.now();

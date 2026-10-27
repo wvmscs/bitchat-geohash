@@ -67,3 +67,73 @@ export function levelCounts(cells) {
 // Total of the rejection counters.
 export const rejectedTotal = status =>
   Object.values(status.rejected || {}).reduce((a, b) => a + b, 0);
+
+// Channel levels of the app; 3 is only a mesh.
+export const CHANNEL_LEVELS = [2, 4, 5, 6, 7];
+
+// The channel level below `level`, or null under the finest.
+export function childLevel(level) {
+  return CHANNEL_LEVELS.find(l => l > level) ?? null;
+}
+
+// The channels from the coarsest down to `geohash` itself, among the
+// channel levels: the breadcrumb of a descent. "u09tv" -> ["u0", "u09t", "u09tv"].
+export function ancestors(geohash) {
+  return CHANNEL_LEVELS.filter(l => l <= geohash.length).map(l => geohash.slice(0, l));
+}
+
+// `#level=5&scale=messages` -> { level: 5, scale: "messages" }; unknown or
+// bad values are left out.
+export function parseHash(hash) {
+  const out = {};
+  for (const part of hash.replace(/^#/, "").split("&")) {
+    const [k, v] = part.split("=");
+    if (k === "level" && /^[2-7]$/.test(v || "")) out.level = Number(v);
+    if (k === "scale" && (v === "participants" || v === "messages")) out.scale = v;
+  }
+  return out;
+}
+
+export const formatHash = (level, scale) => `#level=${level}&scale=${scale}`;
+
+// A refusal from the server, in words.
+export function refusalText(body) {
+  switch (body && body.error) {
+    case "too_many_channels":
+      return `refused: ${body.count} channels would be watched, more than the maximum of ${body.max}`;
+    case "no_finer_level":
+      return "no channel level below this one";
+    case "outside_area":
+      return `refused: outside the watched area #${body.start}`;
+    default:
+      return "refused: " + ((body && body.message) || "unknown error");
+  }
+}
+
+// The cells of the channel level just below `geohash` (D21).
+export function childrenOf(cells, geohash) {
+  const level = childLevel(geohash.length);
+  if (level === null) return [];
+  return [...cells].filter(c => c.level === level && c.geohash.startsWith(geohash));
+}
+
+// Activity below a cell: active channels, all channels, messages and
+// presences summed. Participants are not summed: one person can be in two.
+export function belowSummary(children) {
+  const out = { active: 0, total: children.length, messages: 0, presences: 0, preview: false };
+  for (const c of children) {
+    if (isActive(c)) out.active += 1;
+    out.messages += c.messages;
+    out.presences += c.presences;
+    out.preview ||= c.preview;
+  }
+  return out;
+}
+
+// Cells of `level` whose box meets `[[s, w], [n, e]]`.
+export function cellsMeeting(cells, level, [[s, w], [n, e]]) {
+  return [...cells].filter(c => {
+    const [[cs, cw], [cn, ce]] = c.bbox;
+    return c.level === level && cs < n && cn > s && cw < e && ce > w;
+  });
+}

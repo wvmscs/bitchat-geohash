@@ -82,6 +82,8 @@ pub struct CellStats {
     /// Geohash length (2, 4, 5, 6 or 7).
     pub level: u8,
     pub watched: bool,
+    /// Listened to for a while only, before a possible descent (D21).
+    pub preview: bool,
     pub messages: u32,
     pub presences: u32,
     /// Distinct participants; `None` at level 6 below the k threshold, when
@@ -194,6 +196,14 @@ impl Aggregator {
         }
     }
 
+    /// Forgets channels that left the plan (end of a preview), counters
+    /// included.
+    pub fn forget(&mut self, channels: &[&str]) {
+        for &c in channels {
+            self.cells.remove(c);
+        }
+    }
+
     /// Counts an event, or says why not.
     pub fn observe(&mut self, obs: &Observation, now: i64) -> Result<(), Rejection> {
         let result = self.try_observe(obs, now);
@@ -303,6 +313,7 @@ impl Aggregator {
                 CellStats {
                     level: geohash.len() as u8,
                     watched: !plan.is_retired(&geohash),
+                    preview: false,
                     messages,
                     presences,
                     participants: self.shown(geohash.len(), participants),

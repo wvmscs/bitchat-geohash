@@ -59,6 +59,8 @@ pub struct CellView {
     pub level: u8,
     pub bbox: Bbox,
     pub watched: bool,
+    /// Listened to for a while only, before a possible descent (D21).
+    pub preview: bool,
     pub messages: u32,
     pub presences: u32,
     pub participants: Count,
@@ -76,6 +78,7 @@ impl From<&CellStats> for CellView {
             level: c.level,
             bbox: bbox(&c.geohash),
             watched: c.watched,
+            preview: c.preview,
             messages: c.messages,
             presences: c.presences,
             participants: participants(c.participants),

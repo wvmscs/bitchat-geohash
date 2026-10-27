@@ -195,6 +195,33 @@ impl ListenPlan {
         Ok(added)
     }
 
+    /// Forgets channels (end of a preview). Each group keeps its index, so
+    /// only the subscriptions that held them change; a relay left without
+    /// any channel leaves the plan. Returns the channels actually removed.
+    pub fn remove(&mut self, channels: &[&str]) -> Vec<String> {
+        let gone: BTreeSet<&str> = channels
+            .iter()
+            .copied()
+            .filter(|c| self.channels.remove(*c).is_some())
+            .collect();
+        if gone.is_empty() {
+            return Vec::new();
+        }
+        for groups in self.groups.values_mut() {
+            for group in groups.iter_mut() {
+                group.retain(|c| !gone.contains(c.as_str()));
+            }
+            // Trailing empty groups have no subscription: dropping them
+            // keeps repeated previews from piling up group indices.
+            while groups.last().is_some_and(Vec::is_empty) {
+                groups.pop();
+            }
+        }
+        self.groups
+            .retain(|_, groups| groups.iter().any(|g| !g.is_empty()));
+        gone.into_iter().map(str::to_owned).collect()
+    }
+
     pub fn config(&self) -> &PlanConfig {
         &self.config
     }

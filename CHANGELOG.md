@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Fixed
+- Map tiles blocked by OpenStreetMap under Firefox (403 "Access blocked"): the tile requests now carry the page origin as `Referer` (Leaflet `referrerPolicy`), as the OSM tile policy requires; the rest of the page keeps `no-referrer`.
+- Map page: cells without colour can be hovered and clicked inside (transparent fill; an unfilled SVG shape only reacts on its outline).
 - Relay choice: each app's own rule (step 2, lot 11 bis, from bitchat-envelope's relay selection corrections). iOS keeps one entry per normalised host (first coordinates) and takes exactly 5 by (distance, host); Android keeps raw lines (`host` and `host:443` are two entries) and takes exactly 5 by distance, stable, so it can pick a server twice. No more ties beyond the 5th slot.
 
 ### Changed
@@ -13,6 +15,9 @@
 - An iOS list with a host at two coordinates (`RelayDirectory::conflict`, `Error::RelayListConflict`) is rejected as the app does: the last valid list in the database is used, or the current one on reload; with none, it is used with a warning (D18).
 
 ### Added
+- Preview of the level below on hover (D21): `Monitor::preview` listens for a while to the channels of the next level inside a cell, saves nothing, and drops them from the plan `MonitorConfig::preview_for` (5 min) after the latest request unless a descent keeps them; previews give way, oldest first, under `max_channels`. `ListenPlan::remove`, `Aggregator::forget`, `MonitorEvent::Removed`, `CellStats.preview`, `CellView.preview`, `POST /api/preview`. The page asks after 400 ms over a cell, draws the channels below inside it and sums them up in the tooltip.
+- Map page: going up a level from the list or the URL refits the map to the coarser cells in view.
+- Map page interaction: click a watched cell to descend one level (refusals shown, with the real count over the cap), go back up one or several levels from the same menu, click a retired cell to reinstate it, "Reinstate all" with confirmation, breadcrumb to go back up, level and scale kept in the URL (step 2, lot 15).
 - Map page: one rectangle per channel coloured by participants or messages (log scale, viridis), one level shown at a time, hover details (counts, relays with ranks and status, divergence), status panel, live updates in place from the SSE stream with automatic resume, "too many tabs" message, light and dark, 360 px. `view.js` (pure helpers, `node --test tests/js/`). Binary: `--depth`, `--tiles`, `--tiles-attribution` (step 2, lot 14).
 - Optional TLS for the server (`ServerConfig::tls`, `TlsFiles`): HTTPS with a given certificate and key, HTTP/2 or HTTP/1.1 by ALPN; `Host` checked against the certificate names; `Error::Tls` for unreadable or mismatched files; a non-local address needs TLS unless `insecure_remote` (`Error::RemoteWithoutTls`). Binary: `--tls-cert`, `--tls-key`, `--insecure-remote`. Frozen test certificates in `tests/data/tls/` (step 2, lot 13 bis).
 - `server::serve` (`ServerConfig`, `Server`): live map server around a running `Monitor`: `/api/state`, `/api/events` (SSE: `hello` then deltas, pushed at most once per second), `POST /api/descend` and `/api/reinstate` with JSON errors; `Host`, `Origin` and `Content-Type` checks, CSP, bounded bodies and streams; loopback only unless `allow_remote` (`Error::RemoteListen`). The binary takes a geohash and serves the live map (step 2, lot 13).

@@ -116,6 +116,10 @@ sur une carte OpenStreetMap.
 * **Clic** : descente d'un niveau (énumération et écoute à la demande des enfants). Les
   canaux ajoutés comptent dans le plafond, sont écoutés aussitôt et conservés après un
   redémarrage (sauf `--forget-descents`).
+* **Aperçu** au survol prolongé d'une cellule : les canaux du niveau inférieur sont écoutés
+  pour un temps (5 min après le dernier survol), dessinés dans la cellule et résumés dans
+  l'infobulle, sans rien enregistrer ; une descente les garde (D21 de `PLAN_ET2.md`). Comme
+  les événements sont éphémères, l'aperçu ne montre que l'activité qui arrive pendant l'écoute.
 * Calque optionnel « relais » : position des relais, colorés par verdict, comme dans `geohash_map overlay`.
 
 ### 5. Vie privée (non-objectifs)

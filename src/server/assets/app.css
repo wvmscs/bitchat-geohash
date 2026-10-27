@@ -7,6 +7,7 @@
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
              font: 14px/1.4 -apple-system, system-ui, sans-serif; }
 #map { position: absolute; inset: 0; }
+[hidden] { display: none !important; }
 svg.defs { position: absolute; width: 0; height: 0; }
 .muted { color: var(--muted); }
 .warn { color: var(--warn); margin: 6px 0; }
@@ -48,11 +49,25 @@ svg.defs { position: absolute; width: 0; height: 0; }
 .tip table.relays { border-collapse: collapse; margin-top: 6px; font-size: 12px; }
 .tip table.relays th { text-align: left; font-weight: 600; color: var(--muted); padding: 0 6px 2px 0; }
 .tip table.relays td { padding: 1px 6px 1px 0; white-space: nowrap; }
+.tip-below { margin-top: 6px; max-width: 360px; white-space: normal; }
 .tip td.url { max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 600px) {
   .leaflet-tooltip.cell-tip { font-size: 12px; max-width: calc(100vw - 40px); }
   .tip td.url { max-width: 110px; }
 }
+
+/* Click menu, breadcrumb, buttons (lot 15). */
+button { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line);
+         border-radius: 6px; padding: 3px 8px; cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
+.leaflet-popup.cell-menu .leaflet-popup-content-wrapper,
+.leaflet-popup.cell-menu .leaflet-popup-tip { background: var(--bg); color: var(--fg); }
+.menu { display: flex; flex-direction: column; gap: 6px; }
+.menu .result:empty { display: none; }
+.menu button.up { background: none; text-align: left; }
+#panel .crumbs { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px; margin: 6px 0; font-size: 13px; }
+#panel .crumbs .crumb { border: 0; padding: 0; background: none; color: var(--fg); text-decoration: underline; }
+#panel .reinstate-all { margin: 4px 0; font-size: 13px; }
 
 /* Relay pins (lot 16). */
 .pin { display: flex; align-items: center; justify-content: center; box-sizing: border-box;

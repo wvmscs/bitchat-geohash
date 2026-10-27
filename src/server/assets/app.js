@@ -1,10 +1,13 @@
 // Map page (lot 14): one rectangle per channel, coloured by activity,
 // updated in place from the server's SSE stream (`hello`, then deltas).
+// Lot 15: click to descend or reinstate, breadcrumb, view kept in the URL.
+// D21: hovering a cell previews the level below (listened to for a while).
 // Strings from relays or relay lists only ever go through `textContent`.
 
 import {
-  ago, fillColour, isActive, levelCounts, levelLabel, maxValue, rank,
-  rejectedTotal, scaleValue, PALETTE,
+  ago, ancestors, belowSummary, cellsMeeting, childLevel, childrenOf, fillColour, formatHash,
+  levelCounts, levelLabel, maxValue, parseHash, rank, refusalText, rejectedTotal, scaleValue,
+  PALETTE,
 } from "./view.js";
 
 const css = getComputedStyle(document.documentElement);
@@ -42,7 +45,12 @@ const state = {
   scale: "participants",
   max: 1,             // scale maximum at the level shown
   link: "connecting",
+  focus: null,        // cell descended into (breadcrumb), or null
+  home: null,         // level shown before the first descent
+  wanted: parseHash(location.hash), // level and scale asked by the URL
+  hover: null,        // cell under the pointer, whose level below is shown
 };
+if (state.wanted.scale) state.scale = state.wanted.scale;
 
 // --- Map -------------------------------------------------------------------
 
@@ -80,18 +88,22 @@ let tiles = null;
   document.body.append(svg);
 })();
 
-function styleFor(cell) {
+// Cells without colour still get a transparent fill: in SVG, the inside of
+// an unfilled shape takes no hover nor click, only its outline does.
+const CLEAR = { fill: true, fillColor: "#000", fillOpacity: 0 };
+
+function styleFor(cell, max = state.max) {
   if (!cell.watched) {
-    return { color: colour("muted"), weight: 1, dashArray: "4 4", fill: false, opacity: 0.8 };
+    return { ...CLEAR, color: colour("muted"), weight: 1, dashArray: "4 4", opacity: 0.8 };
   }
   const value = scaleValue(cell, state.scale);
   if (value === "low") {
     return { color: PALETTE[2], weight: 1, dashArray: null, fill: true,
              fillColor: "url(#low-hatch)", fillOpacity: 0.8, opacity: 0.8 };
   }
-  const fill = fillColour(value, state.max);
+  const fill = fillColour(value, max);
   if (!fill) {
-    return { color: colour("line"), weight: 1, dashArray: null, fill: false, opacity: 0.45 };
+    return { ...CLEAR, color: colour("line"), weight: 1, dashArray: null, opacity: 0.45 };
   }
   return { color: fill, weight: 1, dashArray: null, fill: true, fillColor: fill,
            fillOpacity: 0.55, opacity: 0.9 };
@@ -116,6 +128,13 @@ function upsert(cell) {
       // "auto": left or right of the pointer, whichever side has room.
       sticky: true, direction: "auto", offset: [12, 0], className: "cell-tip",
     });
+    layer.on("click", e => {
+      layer.closeTooltip();
+      endHover(cell.geohash);
+      openMenu(cell.geohash, e.latlng);
+    });
+    layer.on("mouseover", () => startHover(cell.geohash));
+    layer.on("mouseout", () => endHover(cell.geohash));
     layers.set(cell.geohash, layer);
     group(cell.level).addLayer(layer);
   } else {
@@ -148,7 +167,199 @@ function showLevel(level) {
   state.max = -1; // forces a recolour
   group(level).addTo(map);
   rescale();
+  saveView();
   updatePanel();
+}
+
+// Shows a coarser or finer level from the drop-down list or the URL. Going
+// up, the map zooms out to the cells of that level in view, whole.
+function changeLevel(level) {
+  const up = state.level !== null && level < state.level;
+  showLevel(level);
+  if (!up) return;
+  const b = map.getBounds();
+  const inView = cellsMeeting(state.cells.values(), level,
+    [[b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]]);
+  if (inView.length) map.fitBounds(L.latLngBounds(inView.map(c => c.bbox)), { padding: [20, 20] });
+}
+
+// Level and scale in the URL, to share a view between tabs.
+function saveView() {
+  if (state.level !== null) history.replaceState(null, "", formatHash(state.level, state.scale));
+}
+
+window.addEventListener("hashchange", () => {
+  const wanted = parseHash(location.hash);
+  if (wanted.scale && wanted.scale !== state.scale) {
+    state.scale = wanted.scale;
+    state.max = -1;
+    rescale();
+  }
+  if (wanted.level && wanted.level !== state.level) changeLevel(wanted.level);
+  updatePanel();
+});
+
+// --- Preview of the level below (D21) --------------------------------------
+
+// Hovering a watched cell for a moment asks the server to listen to the
+// channels below it for a while; they are drawn inside the cell, on their
+// own colour scale, without taking the pointer.
+const HOVER_DELAY = 400;       // ms on a cell before asking
+const ASK_AGAIN = 60 * 1000;   // ms before asking again for the same cell
+const overlay = L.layerGroup().addTo(map);
+const asked = new Map();       // geohash -> time of the latest request
+let hoverTimer = null;
+
+function startHover(geohash) {
+  const cell = state.cells.get(geohash);
+  clearTimeout(hoverTimer);
+  if (!cell || !cell.watched || childLevel(cell.level) === null) return;
+  state.hover = geohash;
+  drawBelow();
+  hoverTimer = setTimeout(() => {
+    if (state.hover !== geohash) return;
+    if (Date.now() - (asked.get(geohash) || 0) < ASK_AGAIN) return;
+    asked.set(geohash, Date.now());
+    // A refusal (cap reached) only shows as an empty level below.
+    command("/api/preview", { geohash });
+  }, HOVER_DELAY);
+}
+
+function endHover(geohash) {
+  if (state.hover !== geohash) return;
+  clearTimeout(hoverTimer);
+  state.hover = null;
+  overlay.clearLayers();
+}
+
+// Draws the channels below the hovered cell, and refreshes its tooltip.
+function drawBelow() {
+  overlay.clearLayers();
+  const g = state.hover;
+  if (!g) return;
+  const children = childrenOf(state.cells.values(), g);
+  const max = maxValue(children, state.scale);
+  for (const c of children) {
+    L.rectangle(c.bbox, { renderer, interactive: false, ...styleFor(c, max), weight: 1, opacity: 0.8 })
+      .addTo(overlay);
+  }
+  const layer = layers.get(g);
+  if (layer && layer.isTooltipOpen()) layer.setTooltipContent(tooltip(state.cells.get(g)));
+}
+
+// --- Commands (lot 15) -----------------------------------------------------
+
+async function command(path, body) {
+  try {
+    const resp = await fetch(path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    let data = null;
+    try { data = await resp.json(); } catch { /* not JSON */ }
+    return { ok: resp.ok, data };
+  } catch (e) {
+    return { ok: false, data: { message: "server unreachable" } };
+  }
+}
+
+// Bounds of a geohash: its own cell if drawn, else the cells inside it.
+function boundsOf(geohash) {
+  const own = state.cells.get(geohash);
+  if (own) return L.latLngBounds(own.bbox);
+  const inside = [...state.cells.values()].filter(c => c.geohash.startsWith(geohash));
+  return inside.length ? L.latLngBounds(inside.map(c => c.bbox)) : null;
+}
+
+// Shows the channels below `geohash`, framed on it.
+function focusOn(geohash) {
+  if (state.focus === null) state.home = state.level;
+  state.focus = geohash;
+  showLevel(childLevel(geohash.length) ?? geohash.length);
+  const bounds = boundsOf(geohash);
+  if (bounds && bounds.isValid()) map.fitBounds(bounds, { padding: [20, 20] });
+}
+
+// Shows the level of `geohash`, framed on it: going back up from a cell.
+function upTo(geohash) {
+  if (state.focus === null) state.home = state.level;
+  const start = state.params ? state.params.start.length : 0;
+  const parents = ancestors(geohash).slice(0, -1).filter(g => g.length > start);
+  state.focus = parents.length ? parents[parents.length - 1] : null;
+  showLevel(geohash.length);
+  const bounds = boundsOf(geohash);
+  if (bounds && bounds.isValid()) map.fitBounds(bounds, { padding: [20, 20] });
+}
+
+// Back to the whole area, at the level shown before the descents.
+function focusAll() {
+  state.focus = null;
+  const levels = levelCounts(state.cells.values()).map(([l]) => l);
+  if (levels.includes(state.home)) showLevel(state.home);
+  else if (levels.length) showLevel(levels[0]);
+  const bounds = L.latLngBounds([...state.cells.values()].map(c => c.bbox));
+  if (bounds.isValid()) map.fitBounds(bounds, { padding: [20, 20] });
+}
+
+function openMenu(geohash, latlng) {
+  const cell = state.cells.get(geohash);
+  if (!cell) return;
+  const box = el("div", "menu");
+  const head = el("div", "menu-head");
+  head.append(el("b", null, "#" + geohash), el("span", "muted", " · " + levelLabel(cell.level)));
+  const result = el("div", "result muted");
+  box.append(head);
+  const button = (label, action) => {
+    const b = el("button", null, label);
+    b.addEventListener("click", async () => {
+      b.disabled = true;
+      result.className = "result muted";
+      result.textContent = "…";
+      await action();
+      b.disabled = false;
+    });
+    box.append(b);
+  };
+  if (cell.watched) {
+    const child = childLevel(cell.level);
+    if (child === null) {
+      box.append(el("div", "muted", "finest channel level: nothing below"));
+    } else {
+      button(`Descend to ${levelLabel(child)}`, async () => {
+        const { ok, data } = await command("/api/descend", { geohash });
+        if (!ok) {
+          result.className = "result warn";
+          result.textContent = refusalText(data);
+          return;
+        }
+        const n = data.added.length;
+        result.textContent = n ? `${n} channels added` : "already watched";
+        focusOn(geohash);
+        map.closePopup();
+      });
+    }
+  } else {
+    box.append(el("div", "muted", "retired: no event for a while, no longer listened to"));
+    button("Reinstate", async () => {
+      const { ok, data } = await command("/api/reinstate", { channels: [geohash] });
+      result.className = ok ? "result muted" : "result warn";
+      result.textContent = ok ? "listening again" : refusalText(data);
+    });
+  }
+  // Going back up: one button per coarser level drawn, nearest first.
+  const levels = levelCounts(state.cells.values()).map(([l]) => l);
+  const ups = ancestors(geohash).slice(0, -1).reverse().filter(g => levels.includes(g.length));
+  for (const g of ups) {
+    const b = el("button", "up", `Up to #${g} · ${levelLabel(g.length)}`);
+    b.addEventListener("click", () => {
+      map.closePopup();
+      upTo(g);
+    });
+    box.append(b);
+  }
+  box.append(result);
+  L.popup({ className: "cell-menu", maxWidth: 280 }).setLatLng(latlng).setContent(box).openOn(map);
 }
 
 // --- Tooltip ---------------------------------------------------------------
@@ -157,7 +368,8 @@ function tooltip(cell) {
   const box = el("div", "tip");
   const head = el("div", "tip-head");
   head.append(el("b", null, "#" + cell.geohash), el("span", "muted",
-    ` · ${levelLabel(cell.level)}${cell.watched ? "" : " · retired"}`));
+    ` · ${levelLabel(cell.level)}${cell.watched ? "" : " · retired"}` +
+    (cell.preview ? " · preview" : "")));
   box.append(head);
   const counts = el("div", "tip-counts");
   for (const [label, value] of [["messages", cell.messages], ["presences", cell.presences],
@@ -187,6 +399,15 @@ function tooltip(cell) {
     table.append(row);
   }
   box.append(table);
+  const below = childLevel(cell.level);
+  if (cell.watched && below !== null) {
+    const s = belowSummary(childrenOf(state.cells.values(), cell.geohash));
+    box.append(el("div", "tip-below", s.total
+      ? `${levelLabel(below)} below: ${s.active} active / ${s.total}, ` +
+        `${s.messages} messages, ${s.presences} presences` +
+        (s.preview ? " (preview: listened to for a few minutes, new events only)" : "")
+      : `${levelLabel(below)} below: listening…`));
+  }
   if (cell.divergence.length) {
     box.append(el("div", "warn",
       `${cell.divergence.length} of ${cell.relays.length} relays chosen by one app only: ` +
@@ -226,10 +447,21 @@ function buildPanel() {
     "too many tabs open on this server: close one, or enable TLS (HTTP/2)");
 
   const body = el("div", "body");
+  ui.crumbs = el("nav", "crumbs");
+  ui.crumbs.setAttribute("aria-label", "levels");
   ui.stats = el("div", "stats");
+  ui.reinstateAll = el("button", "reinstate-all", "Reinstate all retired channels");
+  ui.reinstateAll.addEventListener("click", async () => {
+    const n = state.status ? state.status.retired : 0;
+    if (!confirm(`Listen again to the ${n} retired channels?`)) return;
+    ui.reinstateAll.disabled = true;
+    const { ok, data } = await command("/api/reinstate", { all: true });
+    ui.reinstateAll.disabled = false;
+    if (!ok) alert(refusalText(data));
+  });
   ui.level = el("select");
   ui.level.setAttribute("aria-label", "level shown");
-  ui.level.addEventListener("change", () => showLevel(Number(ui.level.value)));
+  ui.level.addEventListener("change", () => changeLevel(Number(ui.level.value)));
   ui.scale = el("select");
   ui.scale.setAttribute("aria-label", "colour by");
   for (const s of ["participants", "messages"]) {
@@ -241,6 +473,7 @@ function buildPanel() {
     state.scale = ui.scale.value;
     state.max = -1;
     rescale();
+    saveView();
     updatePanel();
   });
   const controls = el("div", "controls");
@@ -257,7 +490,7 @@ function buildPanel() {
   keys.append(el("span", "key none", "no activity"), el("span", "key retired", "retired"), ui.low);
   legend.append(bar, ends, keys);
 
-  body.append(ui.stats, controls, legend, el("div", "note muted",
+  body.append(ui.crumbs, ui.stats, ui.reinstateAll, controls, legend, el("div", "note muted",
     "Presences are not comparable between levels: the apps send heartbeats at levels 2, 4 and 5 only."));
   panel.append(head, ui.link, ui.tabs, body);
 }
@@ -280,6 +513,9 @@ function updatePanel() {
     );
   }
 
+  ui.reinstateAll.hidden = !(state.status && state.status.retired > 0);
+  updateCrumbs();
+
   const counts = levelCounts(state.cells.values());
   const options = [...ui.level.options];
   if (options.map(o => Number(o.value)).join() !== counts.map(([l]) => l).join()) {
@@ -301,6 +537,26 @@ function updatePanel() {
   ui.low.textContent = `fewer than ${k} participants`;
 }
 
+// "#u09 › #u09t › #u09tv": click to go back up (display only: a descent
+// is not undone).
+function updateCrumbs() {
+  ui.crumbs.hidden = !state.focus || !state.params;
+  if (ui.crumbs.hidden) return;
+  const start = state.params.start;
+  const items = [["#" + start + " (all)", focusAll]];
+  for (const g of ancestors(state.focus)) {
+    if (g.length > start.length) items.push(["#" + g, () => focusOn(g)]);
+  }
+  ui.crumbs.replaceChildren();
+  items.forEach(([label, go], i) => {
+    if (i) ui.crumbs.append(el("span", "muted", " › "));
+    const last = i === items.length - 1;
+    const a = el(last ? "b" : "button", last ? null : "crumb", label);
+    if (!last) a.addEventListener("click", go);
+    ui.crumbs.append(a);
+  });
+}
+
 // --- Live stream -------------------------------------------------------------
 
 let source = null;
@@ -315,7 +571,15 @@ function setLink(link) {
 function onHello(d) {
   state.params = d.params;
   if (!tiles) {
-    tiles = L.tileLayer(d.params.tiles, { maxZoom: 19, attribution: d.params.attribution }).addTo(map);
+    tiles = L.tileLayer(d.params.tiles, {
+      maxZoom: 19,
+      attribution: d.params.attribution,
+      // The page sends no Referer (Referrer-Policy: no-referrer), but the
+      // OpenStreetMap tile policy requires one: browsers that honour the
+      // page policy strictly (Firefox) get "Access blocked" (403). Tiles get
+      // the page origin only, never the path nor the #level part.
+      referrerPolicy: "strict-origin-when-cross-origin",
+    }).addTo(map);
   }
   const seen = new Set(d.cells.map(c => c.geohash));
   for (const g of [...state.cells.keys()]) if (!seen.has(g)) remove(g);
@@ -326,7 +590,8 @@ function onHello(d) {
   const levels = levelCounts(d.cells).map(([l]) => l);
   if (state.level === null || !levels.includes(state.level)) {
     if (levels.length) {
-      showLevel(levels[0]); // the finest
+      // The level asked by the URL, else the finest.
+      showLevel(levels.includes(state.wanted.level) ? state.wanted.level : levels[0]);
       const bounds = L.latLngBounds(d.cells.map(c => c.bbox));
       if (bounds.isValid()) map.fitBounds(bounds, { padding: [20, 20] });
     }
@@ -363,10 +628,17 @@ function connect() {
   source.addEventListener("cells", e => delta(e, d => {
     for (const c of d.cells) upsert(c);
     rescale();
+    drawBelow();
     updatePanel();
   }));
   source.addEventListener("removed", e => delta(e, d => {
     for (const g of d.cells) remove(g);
+    // An ended preview may empty the level shown: show the nearest one.
+    const levels = levelCounts(state.cells.values()).map(([l]) => l);
+    if (levels.length && !levels.includes(state.level)) {
+      showLevel(levels.find(l => l < state.level) ?? levels[0]);
+    }
+    drawBelow();
     updatePanel();
   }));
   source.addEventListener("relays", e => delta(e, d => { state.relays = d.relays; }));
