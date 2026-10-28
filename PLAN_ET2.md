@@ -23,7 +23,7 @@ Règle : seuls les fichiers de `bitchat-geohash/` sont modifiés ; le dépôt re
 | 17 | CLI `bitchat-geohash` | ✅ |
 | 18 | Validation sur le réseau réel et dans le navigateur | ✅ |
 | 19 | Changement de la zone surveillée en direct (pour bitchat-console), version 0.2.0 | ✅ |
-| 20 | Changement de zone plus rapide : listes de relais réutilisées (fait) ; sondages réutilisés (à décider) | 🚧 |
+| 20 | Changement de zone plus rapide (listes et verdicts réutilisés, sondage en arrière-plan), version 0.2.1 | ✅ |
 
 La numérotation continue celle de l'étape 1. Ordre : 10 → 11 → 11 bis → 12 sont côté librairie ;
 13 dépend de 12 ; 13 bis dépend de 13 ; 14 dépend de 13 ; 15 et 16 sont indépendants entre eux ; 17 peut démarrer
@@ -433,7 +433,7 @@ avec toutes ses fonctions, et sa page doit permettre de changer de zone.
       effet, zone fixe ; essai réel dans Chrome avec bitchat-console par-dessus (`u09t` →
       `u09w` depuis la console en 8,5 s, retour par le champ de la page).
 
-### Lot 20 : changement de zone plus rapide 🚧
+### Lot 20 : changement de zone plus rapide ✅
 
 Mesuré par l'utilisateur : un changement de zone affiche « changing… » une dizaine de secondes
 (`sp` → `u0` : listes 0,5 s, plan 0,1 s, sondage de 75 relais 9,1 s).
@@ -444,9 +444,17 @@ Mesuré par l'utilisateur : un changement de zone affiche « changing… » une 
       prise dans la base ; le rechargement suivant vient 24 h après ce chargement ;
       `--reload-lists` force le téléchargement ; un changement de zone ne le force jamais.
       Mesuré : listes en 1 ms au lieu de 0,5 s.
-- [ ] Sondages : chaque démarrage sonde tous les relais de la zone (8 s au plus par relais) ;
-      un seul relais mort fait attendre 8 s (`u09t` → `u09w` : 8,1 s, dont 8 s de sondage pour
-      `relay.cypherflow.ai`). Proposition : réutiliser les verdicts récents de la base.
+- [x] Sondages : chaque démarrage sondait tous les relais de la zone (8 s au plus par relais) ;
+      un seul relais mort faisait attendre 8 s (`u09t` → `u09w` : 8,1 s, dont 8 s pour
+      `relay.cypherflow.ai`). Précision de l'utilisateur : ce qui compte d'abord, ce sont les
+      quelques relais du canal de la zone (`g` = la zone, une dizaine au pire) ; les autres
+      servent aux statistiques et aux subdivisions et peuvent être sondés **après avoir rendu la
+      main**. Fait (D24) : verdicts de moins d'une heure repris de la base ; avant d'écouter,
+      seuls les relais du canal de la zone sans verdict récent sont sondés ; les autres en
+      arrière-plan, écartés au fil des verdicts. Mesuré : `u09t` → `u09w` en 0,5 s (serveur
+      10 ms) ; zone jamais vue (`spey`) en 0,5 s.
+- [x] Page : après un changement de zone, niveau des subdivisions de la zone (et non celui
+      gardé dans l'URL pour l'ancienne), bug signalé par l'utilisateur.
 
 ## Décisions
 
@@ -467,6 +475,7 @@ Mesuré par l'utilisateur : un changement de zone affiche « changing… » une 
 | D22 | HTTP/1.1 : 6 connexions par hôte, chaque onglet ouvert en garde une | Un onglet caché depuis 10 s ferme son flux SSE (« paused while the tab is hidden ») et le rouvre, avec un nouveau `hello`, quand il redevient visible ; HTTPS (HTTP/2, D17) reste la solution complète | ✅ |
 | D21 | Aperçu du niveau inférieur au survol : écoute durable ou temporaire ? | Temporaire : canaux ajoutés au plan sans rien enregistrer, retirés du plan 5 min après la dernière demande (pas « retirés » au sens de l'invariant 5, qui ne vaut que pour les canaux surveillés pour de bon) ; ils comptent dans le plafond mais cèdent la place, le plus ancien d'abord, à un autre aperçu ou à une descente ; une descente les rend permanents. Délai d'appui 400 ms côté page, au plus une demande par cellule et par minute. Limite : les événements sont éphémères, l'aperçu ne montre que l'activité qui arrive pendant l'écoute (plus le peu que `since` ramène) | ✅ (à valider par l'utilisateur) |
 | D23 | Changer la zone surveillée en direct (lot 19) | Arrêt et relance du monitor sur la nouvelle zone avec la même base (le code de démarrage, déjà éprouvé, plutôt qu'un replanning à chaud) ; les pages reçoivent un nouveau `hello` ; quelques secondes de coupure (listes rechargées, nouveaux relais sondés) ; pas de retour en arrière automatique si le démarrage échoue autrement qu'en revenant à la zone précédente — *prise par l'agent, à revoir* | ✅ |
+| D24 | Sondage au démarrage (lot 20) | Verdicts de moins d'une heure repris de la base ; avant d'écouter, seuls les relais du canal de la zone sans verdict récent ; les autres en arrière-plan (un relais mort est écouté quelques secondes, ses connexions échouent, puis il est écarté) ; `probe_in_background` à faux rend l'ancien comportement — *précision de l'utilisateur, détails par l'agent* | ✅ |
 
 ## Risques
 
@@ -525,3 +534,4 @@ Mesuré par l'utilisateur : un changement de zone affiche « changing… » une 
 | 28/10/2026 | — | Tag `v0.1.0` posé sur `961b88b` (version 0.1.0). |
 | 28/10/2026 | 19 | Changement de zone en direct (`POST /api/area`, champ « zone » de la page), D23 ; version 0.2.0. Demande de l'utilisateur pour bitchat-console (lecture seule levée pour ce lot). 159 tests Rust, 10 JS ; Chrome headless : `u09t` → `u09w` en 8,5 s depuis la console, retour par le champ. |
 | 28/10/2026 | 20 | Listes de relais prises dans la base si chargées il y a moins de 24 h (demande de l'utilisateur), `--reload-lists`. 160 tests. Mesure réelle : le changement `u09t` → `u09w` reste à 8,1 s, presque tout le sondage d'un relais mort ; vérification à la demande de l'utilisateur : 75 relais pour toute la zone `u0` (1 089 canaux), 6 à 9 par cellule. |
+| 28/10/2026 | 20 | Sondages : verdicts récents repris, relais du canal de la zone d'abord, les autres en arrière-plan (D24) ; page : niveau des subdivisions après un changement de zone. 163 tests. Mesuré : démarrage 4 ms (listes et verdicts de la base), `u09t` → `u09w` 0,5 s, `spey` (jamais vue) 0,5 s. Version 0.2.1. |

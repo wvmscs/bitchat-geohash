@@ -195,3 +195,128 @@ async fn relay_requiring_auth_is_set_aside() {
     let store = monitor.shutdown().await.unwrap();
     assert_eq!(store.last_probe(&url).unwrap().unwrap().1, "auth");
 }
+
+// --- Lot 20: the area's relays first, the others in the background ---
+
+/// Probing on, the area's own channel left out (level 5 only under `u09t`):
+/// nothing is probed before listening.
+fn probing(clock: &TestClock, background: bool) -> bitchat_geohash::monitor::MonitorConfig {
+    bitchat_geohash::monitor::MonitorConfig {
+        probe: true,
+        probe_in_background: background,
+        probe_timeout: Duration::from_secs(2),
+        levels: vec![bitchat_geohash::channels::Level::City],
+        ..config("u09t", clock)
+    }
+}
+
+#[tokio::test]
+async fn other_relays_are_probed_after_the_start() {
+    let (silent, dead) = (silent_server().await, closed_port().await);
+    let clock = TestClock::new();
+    let started = std::time::Instant::now();
+    let monitor = Monitor::start(
+        probing(&clock, true),
+        Some(directory_of(&[silent.clone(), dead.clone()])),
+        None,
+        Store::open_in_memory().unwrap(),
+    )
+    .await
+    .unwrap();
+    // Not held by the silent relay's 2 s.
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "{:?}",
+        started.elapsed()
+    );
+    // The dead one is set aside when its verdict comes.
+    let s = status_until(&monitor, "dropped", |s| !s.dropped_relays.is_empty()).await;
+    assert_eq!(s.dropped_relays, std::slice::from_ref(&dead));
+    drop(monitor.shutdown().await.unwrap());
+
+    // All first, as before: the start waits for the silent one.
+    let started = std::time::Instant::now();
+    let monitor = Monitor::start(
+        probing(&clock, false),
+        Some(directory_of(&[silent, dead.clone()])),
+        None,
+        Store::open_in_memory().unwrap(),
+    )
+    .await
+    .unwrap();
+    assert!(started.elapsed() >= Duration::from_secs(2));
+    assert_eq!(monitor.status().await.unwrap().dropped_relays, [dead]);
+    drop(monitor.shutdown().await.unwrap());
+}
+
+#[tokio::test]
+async fn the_areas_own_relays_are_probed_first() {
+    let silent = silent_server().await;
+    let clock = TestClock::new();
+    let started = std::time::Instant::now();
+    // `u09t` is a channel here (levels 4 and 5): its relays come first.
+    let config = bitchat_geohash::monitor::MonitorConfig {
+        levels: vec![
+            bitchat_geohash::channels::Level::Province,
+            bitchat_geohash::channels::Level::City,
+        ],
+        ..probing(&clock, true)
+    };
+    let monitor = Monitor::start(
+        config,
+        Some(directory_of(&[silent])),
+        None,
+        Store::open_in_memory().unwrap(),
+    )
+    .await
+    .unwrap();
+    assert!(started.elapsed() >= Duration::from_secs(2));
+    drop(monitor.shutdown().await.unwrap());
+}
+
+#[tokio::test]
+async fn recent_verdicts_are_not_probed_again() {
+    let (logs, _guard) = Logs::capture();
+    let db = TempDb::new("recent-verdicts");
+    let dead = closed_port().await;
+    let clock = TestClock::new();
+    let start = || {
+        Monitor::start(
+            probing(&clock, true),
+            Some(directory_of(std::slice::from_ref(&dead))),
+            None,
+            Store::open(&db.0).unwrap(),
+        )
+    };
+    let rows = || -> i64 {
+        rusqlite::Connection::open(&db.0)
+            .unwrap()
+            .query_row("SELECT count(*) FROM probe_result", [], |r| r.get(0))
+            .unwrap()
+    };
+    let monitor = start().await.unwrap();
+    status_until(&monitor, "dropped", |s| !s.dropped_relays.is_empty()).await;
+    drop(monitor.shutdown().await.unwrap());
+    let after_first = rows();
+    assert!(after_first >= 1);
+
+    // Within the hour: set aside at once, from the database, without a
+    // probe nor a connection.
+    clock.set(clock.get() + 600);
+    let monitor = start().await.unwrap();
+    assert_eq!(
+        monitor.status().await.unwrap().dropped_relays,
+        std::slice::from_ref(&dead)
+    );
+    assert_eq!(logs.info_lines("recent relay verdicts reused"), 1);
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    drop(monitor.shutdown().await.unwrap());
+    assert_eq!(rows(), after_first, "nothing probed again");
+
+    // An hour later: probed again.
+    clock.set(clock.get() + 3600);
+    let monitor = start().await.unwrap();
+    status_until(&monitor, "dropped", |s| !s.dropped_relays.is_empty()).await;
+    drop(monitor.shutdown().await.unwrap());
+    assert!(rows() > after_first);
+}

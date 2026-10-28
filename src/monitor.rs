@@ -31,7 +31,7 @@ use crate::error::{Error, Result};
 use crate::listener::{ConnState, Listener, ListenerConfig, ListenerEvent};
 use crate::plan::{ListenPlan, PlanConfig};
 use crate::probe::{
-    PROBE_CONCURRENCY, PROBE_TIMEOUT, Status, Verdict, probe_new_relays, probe_relays,
+    PROBE_CONCURRENCY, PROBE_TIMEOUT, Status, Verdict, probe_new_relays, probe_where,
 };
 use crate::store::{ChannelState, RelayListLoad, Store, StoreWriter, Write, sha256_hex};
 
@@ -47,6 +47,14 @@ pub struct MonitorConfig {
     pub listener: ListenerConfig,
     /// Probe the relays before listening.
     pub probe: bool,
+    /// A verdict in the database younger than this is used without probing
+    /// again (lot 20).
+    pub verdicts_fresh_for: Duration,
+    /// Before listening, probe only the relays of the area's own channel
+    /// (`g` = the start geohash, the ones that matter first); the others are
+    /// probed in the background and set aside as their verdicts come (lot
+    /// 20). Off: all of them first, as before.
+    pub probe_in_background: bool,
     pub probe_timeout: Duration,
     pub probe_concurrency: usize,
     /// Control loop period: inactivity check and store hand-over.
@@ -78,6 +86,8 @@ impl MonitorConfig {
             aggregator: AggregatorConfig::default(),
             listener: ListenerConfig::default(),
             probe: true,
+            verdicts_fresh_for: Duration::from_secs(3600),
+            probe_in_background: true,
             probe_timeout: PROBE_TIMEOUT,
             probe_concurrency: PROBE_CONCURRENCY,
             tick: Duration::from_secs(5),
@@ -475,19 +485,78 @@ impl Monitor {
             );
         }
 
-        let writer = StoreWriter::spawn(store);
+        // Recent verdicts from the database: not probed again (lot 20).
         let mut verdicts = BTreeMap::new();
+        let store = if config.probe {
+            let relays = plan.relays();
+            let (fresh, now) = (config.verdicts_fresh_for.as_secs() as i64, clock());
+            let (store, recent) = tokio::task::spawn_blocking(move || {
+                let mut recent = BTreeMap::new();
+                for relay in relays {
+                    if let Some((at, status, detail)) = store.last_probe(&relay)?
+                        && now - at < fresh
+                        && now >= at
+                        && let Some(status) = Status::parse(&status)
+                        && status != Status::Unprobed
+                    {
+                        recent.insert(
+                            relay,
+                            Verdict {
+                                status,
+                                text: detail,
+                            },
+                        );
+                    }
+                }
+                Ok::<_, Error>((store, recent))
+            })
+            .await
+            .map_err(|_| Error::MonitorStopped)??;
+            if !recent.is_empty() {
+                tracing::info!(relays = recent.len(), "recent relay verdicts reused");
+            }
+            verdicts = recent;
+            store
+        } else {
+            store
+        };
+        let writer = StoreWriter::spawn(store);
         if config.probe {
-            verdicts = probe_relays(&plan, config.probe_concurrency, config.probe_timeout).await;
-            let now = clock();
-            let mut dropped = Vec::new();
             for (relay, v) in &verdicts {
+                if !v.status.worth_listening() {
+                    tracing::debug!(%relay, verdict = %v.text, "relay set aside (recent verdict)");
+                }
+            }
+            // First the relays of the area's own channel, unless all of them.
+            let first: std::collections::BTreeSet<String> = if config.probe_in_background {
+                plan.selection(&start)
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|s| s.relay.url.clone())
+                    .collect()
+            } else {
+                plan.relays().into_iter().collect()
+            };
+            let probed = probe_where(
+                &plan,
+                |r| first.contains(r) && !verdicts.contains_key(r),
+                config.probe_concurrency,
+                config.probe_timeout,
+            )
+            .await;
+            let now = clock();
+            for (relay, v) in &probed {
                 writer.send(v.to_write(relay, now))?;
                 if !v.status.worth_listening() {
                     tracing::warn!(%relay, verdict = %v.text, "relay set aside");
-                    dropped.push(relay.as_str());
                 }
             }
+            verdicts.extend(probed);
+            let dropped: Vec<&str> = verdicts
+                .iter()
+                .filter(|(_, v)| !v.status.worth_listening())
+                .map(|(r, _)| r.as_str())
+                .collect();
             plan.drop_relays(&dropped);
         }
 
@@ -532,6 +601,20 @@ impl Monitor {
             events: events.clone(),
             previews: BTreeMap::new(),
         };
+        // The other relays, in the background: dead ones are set aside as
+        // their verdicts come (lot 20).
+        if state.config.probe && state.config.probe_in_background {
+            let (plan, known) = (state.plan.clone(), state.verdicts.clone());
+            let (concurrency, timeout) =
+                (state.config.probe_concurrency, state.config.probe_timeout);
+            let tx = state.probed_tx.clone();
+            tokio::spawn(async move {
+                let verdicts = probe_new_relays(&plan, &known, concurrency, timeout).await;
+                if !verdicts.is_empty() {
+                    let _ = tx.send(verdicts);
+                }
+            });
+        }
         let task = tokio::spawn(state.run(rx, events_rx, reload_rx, probed_rx));
         Ok(Monitor { tx, events, task })
     }

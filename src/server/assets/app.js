@@ -881,8 +881,11 @@ function onHello(d) {
   const levels = levelCounts(d.cells).map(([l]) => l);
   if (state.level === null || !levels.includes(state.level)) {
     if (levels.length) {
-      // The level asked by the URL, else the finest.
-      showLevel(levels.includes(state.wanted.level) ? state.wanted.level : levels[0]);
+      // After an area change, the area's subdivisions; else the level
+      // asked by the URL, else the subdivisions, else the finest.
+      const sub = childLevel(d.params.start.length);
+      const prefer = moved ? sub : (state.wanted.level ?? sub);
+      showLevel(levels.includes(prefer) ? prefer : levels.includes(sub) ? sub : levels[0]);
       const bounds = L.latLngBounds(d.cells.map(c => c.bbox));
       if (bounds.isValid()) map.fitBounds(bounds, { padding: [20, 20] });
     }

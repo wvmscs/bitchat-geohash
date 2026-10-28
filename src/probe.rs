@@ -51,6 +51,19 @@ impl Status {
         }
     }
 
+    /// From the database (`probe_result.status`).
+    pub fn parse(s: &str) -> Option<Status> {
+        Some(match s {
+            "ok" => Status::Ok,
+            "auth" => Status::Auth,
+            "refused" => Status::Refused,
+            "down" => Status::Down,
+            "dead" => Status::Dead,
+            "unprobed" => Status::Unprobed,
+            _ => return None,
+        })
+    }
+
     /// Whether listening to the relay is worth it. Dead relays won't come
     /// back, and AUTH relays never deliver to a client that doesn't
     /// authenticate; both are set aside, not replaced. Down and refused ones
@@ -144,10 +157,27 @@ pub async fn probe_new_relays(
     concurrency: usize,
     timeout: Duration,
 ) -> BTreeMap<String, Verdict> {
+    probe_where(
+        plan,
+        |relay| !known.contains_key(relay),
+        concurrency,
+        timeout,
+    )
+    .await
+}
+
+/// Probes the relays of the plan that `wanted` keeps (lot 20: the area's
+/// own channel first, the others in the background).
+pub async fn probe_where(
+    plan: &ListenPlan,
+    wanted: impl Fn(&str) -> bool,
+    concurrency: usize,
+    timeout: Duration,
+) -> BTreeMap<String, Verdict> {
     let targets: Vec<(String, String)> = plan
         .relays()
         .into_iter()
-        .filter(|relay| !known.contains_key(relay))
+        .filter(|relay| wanted(relay))
         .filter_map(|relay| {
             let channel = plan
                 .subscriptions(&relay)

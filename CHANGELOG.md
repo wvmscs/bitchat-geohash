@@ -2,7 +2,13 @@
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-28
+
+Faster starts and area changes (lot 20): about 0.5 s instead of 8 to 10 s.
+
 ### Changed
+- Relay probes: a verdict in the database younger than `verdicts_fresh_for` (1 h) is used without probing again. Before listening, only the relays of the area's own channel (`g` = the area) are probed; the others are probed in the background and set aside as their verdicts come (`probe_in_background`, on by default). `probe::probe_where`, `Status::parse`.
+- Map page: after an area change it shows the level of the area's subdivisions, not the level kept in the URL for the previous area.
 - Relay lists are not downloaded again at start when the database has one from the same source loaded less than `reload_every` (24 h) ago, nor at an area change (lot 20); the next reload comes 24 h after that load. `--reload-lists` (`MonitorConfig::reload_lists`) downloads them at start anyway.
 
 ## [0.2.0] - 2026-10-28
