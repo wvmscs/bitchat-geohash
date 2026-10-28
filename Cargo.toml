@@ -1,10 +1,14 @@
 [package]
 name = "bitchat-geohash"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 description = "Live monitor of BitChat location channels (geohash): channel enumeration, the apps' relay choice, listening to kinds 20000/20001, and per-cell aggregation without personal data."
 license = "GPL-3.0-only"
 repository = "https://github.com/wvmscs/bitchat-geohash"
+
+# Own workspace: the crate builds on its own, also inside the local `Nostr/`
+# directory, whose workspace does not list it.
+[workspace]
 
 [dependencies]
 k256 = { version = "0.13", default-features = false, features = ["schnorr", "std"] }

@@ -40,7 +40,8 @@ Step 3 adds a Swift UI through `uniffi`; the Swift package lives in `swift/`.
 
 ### Others
 - This crate is its own git repository (`origin` = `git@github.com:wvmscs/bitchat-geohash.git`,
-  branch `main`), nested in the local `Nostr/` Cargo workspace, which is not under git.
+  branch `main`), its own Cargo workspace (`[workspace]` in `Cargo.toml`), inside the local
+  `Nostr/` directory, whose workspace does not list it.
 - Pushing commits and tags to `origin` is authorized.
   Never force-push or rewrite pushed history without an explicit request.
 
@@ -103,7 +104,7 @@ Step 3 adds a Swift UI through `uniffi`; the Swift package lives in `swift/`.
 
 ## Commands
 
-Run from the crate (a standalone package) or from the local `Nostr/` workspace root:
+Run from the crate (its own Cargo workspace):
 
 ```sh
 cargo fmt -p bitchat-geohash --check
@@ -120,10 +121,8 @@ cargo run -p bitchat-geohash -- u09 --listen 127.0.0.1:8080                 # ma
 cargo run -p bitchat-geohash -- u09 --tls-cert localhost+2.pem --tls-key localhost+2-key.pem   # HTTPS, HTTP/2
 ```
 
-`Cargo.lock` is committed for reproducible standalone builds. Inside the local workspace,
-Cargo uses `Nostr/Cargo.lock` instead and ignores it: after a dependency change, refresh it
-from a copy of the crate outside the workspace (copy the workspace lock there, run
-`cargo tree` to prune it, check with `cargo test --locked`), so both pin the same versions.
+`Cargo.lock` is committed for reproducible builds; Cargo uses it directly (check with
+`cargo test --locked`).
 
 Tests run offline: the frozen CSVs from `tests/data/` and the local `TestRelay`
 (`tests/common/relay.rs`). Only the `watch` example and the binary touch the real network

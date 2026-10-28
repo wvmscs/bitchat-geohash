@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-28
+
+### Changed
+- Own Cargo workspace (`[workspace]` in `Cargo.toml`), like bitchat-console and bitchat-launcher: the crate builds the same anywhere, with its own `Cargo.lock` (it was out of date: built inside the local `Nostr/` workspace, it used that one) and its own `target/`.
+
 ## [0.2.1] - 2026-10-28
 
 Faster starts and area changes (lot 20): about 0.5 s instead of 8 to 10 s.
