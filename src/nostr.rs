@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! The NIP-01 subset this crate needs: events as relays deliver them (id and
 //! Schnorr signature checks), REQ filters, and the current time.
 //!

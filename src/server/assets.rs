@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Static files of the page, built into the binary (D10): the map works
 //! offline and makes no third-party request except for the tiles.
 

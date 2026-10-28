@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Channel levels and enumeration of the channels inside a geohash (lot 2).
 //!
 //! A geohash is a channel of its own, not a subset of its parent: an event of

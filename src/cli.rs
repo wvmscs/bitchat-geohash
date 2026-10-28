@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Command-line options shared by the `bitchat-geohash` binary and the
 //! `watch` example (lot 17), so that both read them the same way. No
 //! dependency: a hand-written loop over the arguments.

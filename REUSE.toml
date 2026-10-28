@@ -1,0 +1,35 @@
+version = 1
+
+# Files that cannot carry a header (REUSE); every other file has its own.
+[[annotations]]
+path = ["**/*.md", "Cargo.lock", "tests/data/tls/*.pem"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 William VITAL, FR (wvmscs)"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# Screenshot of the map: map tiles from OpenStreetMap.
+[[annotations]]
+path = "docs/map.jpg"
+precedence = "override"
+SPDX-FileCopyrightText = ["2026 William VITAL, FR (wvmscs)", "OpenStreetMap contributors"]
+SPDX-License-Identifier = "GPL-3.0-or-later AND ODbL-1.0"
+
+# Leaflet 1.9.4, unchanged (https://leafletjs.com).
+[[annotations]]
+path = "src/server/assets/leaflet/**"
+precedence = "override"
+SPDX-FileCopyrightText = ["2010-2023 Volodymyr Agafonkin", "2010-2011 CloudMade"]
+SPDX-License-Identifier = "BSD-2-Clause"
+
+# Frozen copies of the apps' relay lists, for offline tests.
+[[annotations]]
+path = "tests/data/online_relays_gps.csv"
+precedence = "override"
+SPDX-FileCopyrightText = "permissionlesstech (https://github.com/permissionlesstech/bitchat, relays/online_relays_gps.csv)"
+SPDX-License-Identifier = "Unlicense"
+
+[[annotations]]
+path = "tests/data/nostr_relays.csv"
+precedence = "override"
+SPDX-FileCopyrightText = "2025 permissionlesstech (https://github.com/permissionlesstech/georelays, nostr_relays.csv)"
+SPDX-License-Identifier = "MIT"

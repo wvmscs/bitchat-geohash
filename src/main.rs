@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! `bitchat-geohash`: live map of BitChat location-channel activity.
 //!
 //! Watches the channels inside a geohash and serves the live map (lot 17,

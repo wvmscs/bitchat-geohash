@@ -50,4 +50,6 @@ cargo run --example watch -- u09 --depth 2
 
 ## License
 
-GPL-3.0-only.
+GPL-3.0-or-later. Leaflet (BSD-2-Clause), the map tiles of the screenshot (OpenStreetMap) and
+the frozen relay lists in `tests/data/` (Unlicense, MIT) keep their own licences. Every file says so with its SPDX tags ([REUSE](https://reuse.software)): a header, or `REUSE.toml`;
+the licence texts are in `LICENSES/`.

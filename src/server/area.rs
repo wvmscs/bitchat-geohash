@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Changing the watched area while the map runs (lot 19): the monitor is
 //! stopped and started again on the new area with the same database, and
 //! every open page gets a new `hello`.

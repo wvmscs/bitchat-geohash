@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! A local NIP-01 relay for the network tests, and signing keys.
 //!
 //! The relay supports `EVENT` (signature checked, answered with `OK`), `REQ`

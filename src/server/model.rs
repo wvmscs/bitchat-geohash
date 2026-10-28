@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! What the browser receives (lot 12): views of the monitor state, the SSE
 //! messages, and the deltas between two states (D11).
 //!

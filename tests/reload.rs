@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Relay list sources, fallback and 24 h reload, against a local HTTP server
 //! (never the real lists: invariant 7).
 

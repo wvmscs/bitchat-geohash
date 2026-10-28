@@ -1,9 +1,12 @@
+# SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 [package]
 name = "bitchat-geohash"
 version = "0.2.2"
 edition = "2024"
 description = "Live monitor of BitChat location channels (geohash): channel enumeration, the apps' relay choice, listening to kinds 20000/20001, and per-cell aggregation without personal data."
-license = "GPL-3.0-only"
+license = "GPL-3.0-or-later"
 repository = "https://github.com/wvmscs/bitchat-geohash"
 
 # Own workspace: the crate builds on its own, also inside the local `Nostr/`

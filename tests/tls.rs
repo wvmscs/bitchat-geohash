@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Optional TLS (lot 13 bis): HTTPS, ALPN `h2` / `http/1.1`, names of the
 //! certificate, errors. Test certificate authority and keys in
 //! `tests/data/tls/` (test only).

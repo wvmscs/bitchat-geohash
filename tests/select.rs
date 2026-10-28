@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Relay lists and the apps' relay choice, on the frozen lists. Expected
 //! choices are the output of `bitchat-envelope`'s `geohash_map --no-probe`
 //! on the same files, after its relay selection corrections

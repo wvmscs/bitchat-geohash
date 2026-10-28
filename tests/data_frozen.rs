@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! The relay lists in `tests/data/` are frozen: other tests rely on their
 //! exact content. If this fails, the files were changed (see AGENTS.md).
 

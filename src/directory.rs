@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Relay lists (`host,lat,lon` CSV): parsing with each app's rules,
 //! normalisation and sources (lots 1, 8 and 11 bis).
 

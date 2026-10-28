@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! One task per relay connection: subscriptions from the listen plan,
 //! reconnection with backoff (lot 7).
 //!

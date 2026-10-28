@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! The `bitchat-geohash` binary: start on a local relay list and a local
 //! relay, the map answers; clear messages and exit codes otherwise.
 #![cfg(feature = "server")]

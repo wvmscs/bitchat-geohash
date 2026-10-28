@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Request checks and security headers (D13): `Host` (DNS rebinding),
 //! `Origin` and `Content-Type` of commands, CSP. With TLS, the names
 //! accepted are those of the certificate (D17).

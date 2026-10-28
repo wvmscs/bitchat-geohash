@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Relay probe: read a location channel the way the app does (lot 5).
 //!
 //! Connects, sends a REQ for kinds 20000/20001 with the `g` tag, and waits

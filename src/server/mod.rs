@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Internal web server of step 2: the map page, the live state pushed to
 //! the browser (SSE) and the commands. See `PLAN_ET2.md`.
 //!

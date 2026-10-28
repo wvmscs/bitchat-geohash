@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Local relays and servers for the network tests. Each test binary uses a
 //! different subset.
 #![allow(dead_code, unused_imports)]

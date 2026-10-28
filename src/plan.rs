@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Listen plan: relay to channels, filters, retire/reinstate, diff (lot 3).
 //!
 //! Relays are geolocated by IP and cluster in city centres, so thousands of

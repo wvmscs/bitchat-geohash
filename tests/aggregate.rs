@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Aggregation: deduplication, checks, window, k threshold, meshes,
 //! inactivity, per-minute buckets, privacy. Clock injected (`now`).
 

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Versioned schema migrations.
 //!
 //! Append-only: one numbered file per change, never edited or reordered once

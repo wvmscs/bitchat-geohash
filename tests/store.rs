@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! SQLite store: schema, persistence, writer thread, privacy.
 
 use std::path::PathBuf;

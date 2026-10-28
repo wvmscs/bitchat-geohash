@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Optional TLS (lot 13 bis, D17): a certificate and key given by the user
 //! (`mkcert`, say), HTTP/2 or HTTP/1.1 negotiated by ALPN. HTTP/2 carries
 //! every SSE stream of a browser on one connection, past the limit of 6

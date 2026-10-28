@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! The apps' relay choice for a channel: closest relays, iOS and Android (lots 1 and 11 bis).
 
 use crate::GEO_RELAY_COUNT;

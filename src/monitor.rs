@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Wiring of the parts: control loop, retirement and reinstatement of
 //! channels, 24 h relay list reload (lots 7 and 8).
 //!

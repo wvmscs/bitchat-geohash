@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Pure helpers of the map page: colour scale, labels, counts. No DOM, so
 // that node can check them (see PLAN_ET2.md, lot 14).
 

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Map page (lot 14): one rectangle per channel, coloured by activity,
 // updated in place from the server's SSE stream (`hello`, then deltas).
 // Lot 15: click to descend or reinstate, breadcrumb, view kept in the URL.

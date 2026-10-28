@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Web server: page and built-in files (lot 10); live state, commands and
 //! protections around a monitor on a local relay (lot 13).
 #![cfg(feature = "server")]

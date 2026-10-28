@@ -1,3 +1,6 @@
+-- SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+-- SPDX-License-Identifier: GPL-3.0-or-later
+
 -- Initial schema. Times are Unix seconds (UTC).
 -- No pubkey, nickname or message content anywhere (spec §5).
 

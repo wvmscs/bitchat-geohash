@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 /* Colours and panel taken from bitchat-envelope's map_overlay.html. */
 :root { --bg: #fff; --fg: #1d1d1f; --muted: #6e6e73; --line: #8e8e93; --warn: #b85c00;
         --ok: #1a8f3c; --auth: #c77c00; --refused: #b85c00; --down: #e53935; --dead: #6d1b1b; --unprobed: #7a7a7a; }

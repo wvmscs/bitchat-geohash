@@ -16,8 +16,9 @@ Step 3 adds a Swift UI through `uniffi`; the Swift package lives in `swift/`.
 ## Constraints
 
 ### Do NOT
-- Modify files outside `bitchat-geohash/`. `bitchat-envelope`, `nip90-dvm`, the workspace
-  `Cargo.toml` and `src/` are read-only. If a change there looks necessary, ask first.
+- Modify `bitchat-envelope`, `nip90-dvm`, the workspace `Nostr/Cargo.toml` or `src/`
+  (read-only); if a change there looks necessary, ask first. `geohash-relays`,
+  `bitchat-console`, `bitchat-launcher` and `bitchat-web` follow their own `AGENTS.md`.
 - Modify files without reading them first.
 - Modify existing tests, except to fix them or when an instruction in this file requires it
   (for example, extending the privacy tests when adding fields).
@@ -114,12 +115,19 @@ cargo clippy -p bitchat-geohash --all-targets --all-features -- -D warnings   # 
 cargo clippy -p bitchat-geohash --all-targets --no-default-features -- -D warnings
 cargo test -p bitchat-geohash --release -- --ignored                         # timing tests (plan build)
 node --test tests/js/view.test.mjs                                          # page helpers (view.js)
+reuse lint                                                                  # copyright and licence of every file
 cargo run -p bitchat-geohash --example watch -- u09 --depth 2                # real network
 cargo run -p bitchat-geohash --example watch -- u09tvw --depth 0 --no-android \
     --relays-csv own.csv --db own.sqlite --refresh 1s     # one relay only (own.csv lists it)
 cargo run -p bitchat-geohash -- u09 --listen 127.0.0.1:8080                 # map server (real network)
 cargo run -p bitchat-geohash -- u09 --tls-cert localhost+2.pem --tls-key localhost+2-key.pem   # HTTPS, HTTP/2
 ```
+
+<!-- REUSE-IgnoreStart -->
+A new file starts with `SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)` and
+`SPDX-License-Identifier: GPL-3.0-or-later` in a comment, or is covered by `REUSE.toml`;
+third-party files (Leaflet, relay lists) keep their own lines there.
+<!-- REUSE-IgnoreEnd -->
 
 `Cargo.lock` is committed for reproducible builds; Cargo uses it directly (check with
 `cargo test --locked`).
