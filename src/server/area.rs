@@ -123,6 +123,8 @@ impl Holder {
         // Not for a second time: they were applied at the start.
         config.reinstate_all = false;
         config.forget_descents = false;
+        // The lists of this session are in the database: no download.
+        config.reload_lists = false;
         let store = self.take().await?.shutdown().await?;
         tracing::info!(from = %old.start, to = %config.start, "watched area changes");
         let (monitor, config) = match relaunch.start(config.clone(), store).await {
@@ -133,7 +135,8 @@ impl Holder {
                 tracing::warn!(error = %e, area = %config.start, "cannot watch the new area, back to the previous one");
                 let store = Store::open(relaunch.db())?;
                 let mut back = old.clone();
-                (back.reinstate_all, back.forget_descents) = (false, false);
+                (back.reinstate_all, back.forget_descents, back.reload_lists) =
+                    (false, false, false);
                 let m = relaunch.start(back, store).await?;
                 *self.monitor.write().await = Some(Arc::new(m));
                 self.generation.send_modify(|g| *g += 1);

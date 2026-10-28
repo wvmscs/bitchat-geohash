@@ -23,6 +23,7 @@ Règle : seuls les fichiers de `bitchat-geohash/` sont modifiés ; le dépôt re
 | 17 | CLI `bitchat-geohash` | ✅ |
 | 18 | Validation sur le réseau réel et dans le navigateur | ✅ |
 | 19 | Changement de la zone surveillée en direct (pour bitchat-console), version 0.2.0 | ✅ |
+| 20 | Changement de zone plus rapide : listes de relais réutilisées (fait) ; sondages réutilisés (à décider) | 🚧 |
 
 La numérotation continue celle de l'étape 1. Ordre : 10 → 11 → 11 bis → 12 sont côté librairie ;
 13 dépend de 12 ; 13 bis dépend de 13 ; 14 dépend de 13 ; 15 et 16 sont indépendants entre eux ; 17 peut démarrer
@@ -432,6 +433,21 @@ avec toutes ses fonctions, et sa page doit permettre de changer de zone.
       effet, zone fixe ; essai réel dans Chrome avec bitchat-console par-dessus (`u09t` →
       `u09w` depuis la console en 8,5 s, retour par le champ de la page).
 
+### Lot 20 : changement de zone plus rapide 🚧
+
+Mesuré par l'utilisateur : un changement de zone affiche « changing… » une dizaine de secondes
+(`sp` → `u0` : listes 0,5 s, plan 0,1 s, sondage de 75 relais 9,1 s).
+
+- [x] Listes : demande de l'utilisateur, « inutile au sein de la session courante, et à
+      limiter à 1 fois à 24 h (sauf demande explicite de rechargement) en cas de relance ».
+      Au démarrage, une liste de la même source chargée il y a moins de `reload_every` est
+      prise dans la base ; le rechargement suivant vient 24 h après ce chargement ;
+      `--reload-lists` force le téléchargement ; un changement de zone ne le force jamais.
+      Mesuré : listes en 1 ms au lieu de 0,5 s.
+- [ ] Sondages : chaque démarrage sonde tous les relais de la zone (8 s au plus par relais) ;
+      un seul relais mort fait attendre 8 s (`u09t` → `u09w` : 8,1 s, dont 8 s de sondage pour
+      `relay.cypherflow.ai`). Proposition : réutiliser les verdicts récents de la base.
+
 ## Décisions
 
 | # | Question | Proposition | État |
@@ -508,3 +524,4 @@ avec toutes ses fonctions, et sa page doit permettre de changer de zone.
 | 28/10/2026 | 18 | `README.md` ajouté (présentation, lancement HTTP et HTTPS, usage de la carte), capture `docs/map.jpg` (300 Ko, carte réelle de `u09t` en HTTPS, colorée par participants, relais affichés). Lot 18 terminé. |
 | 28/10/2026 | — | Tag `v0.1.0` posé sur `961b88b` (version 0.1.0). |
 | 28/10/2026 | 19 | Changement de zone en direct (`POST /api/area`, champ « zone » de la page), D23 ; version 0.2.0. Demande de l'utilisateur pour bitchat-console (lecture seule levée pour ce lot). 159 tests Rust, 10 JS ; Chrome headless : `u09t` → `u09w` en 8,5 s depuis la console, retour par le champ. |
+| 28/10/2026 | 20 | Listes de relais prises dans la base si chargées il y a moins de 24 h (demande de l'utilisateur), `--reload-lists`. 160 tests. Mesure réelle : le changement `u09t` → `u09w` reste à 8,1 s, presque tout le sondage d'un relais mort ; vérification à la demande de l'utilisateur : 75 relais pour toute la zone `u0` (1 089 canaux), 6 à 9 par cellule. |

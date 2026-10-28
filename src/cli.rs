@@ -24,7 +24,7 @@ pub struct MonitorArgs {
 /// Usage of the common options, for the callers' usage lines.
 pub const MONITOR_USAGE: &str = "<geohash> [--depth N] [--levels 2,4,5,6] [--max-cells N] \
      [--window 15m] [--inactivity 15m] [--relays-csv <url|path>] \
-     [--android-csv <url|path> | --no-android] [--no-probe] [--db <path>] [--reinstate-all] \
+     [--android-csv <url|path> | --no-android] [--reload-lists] [--no-probe] [--db <path>] [--reinstate-all] \
      [--forget-descents] [--verbose]";
 
 /// The value of the option being read.
@@ -113,6 +113,7 @@ pub fn parse(
             "--android-csv" => sources.android = Some(ListSource::parse(&v.value()?)),
             "--no-android" => sources.android = None,
             "--no-probe" => config.probe = false,
+            "--reload-lists" => config.reload_lists = true,
             "--db" => db = v.value()?,
             "--reinstate-all" => config.reinstate_all = true,
             "--forget-descents" => config.forget_descents = true,

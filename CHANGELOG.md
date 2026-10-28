@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- Relay lists are not downloaded again at start when the database has one from the same source loaded less than `reload_every` (24 h) ago, nor at an area change (lot 20); the next reload comes 24 h after that load. `--reload-lists` (`MonitorConfig::reload_lists`) downloads them at start anyway.
+
 ## [0.2.0] - 2026-10-28
 
 ### Added

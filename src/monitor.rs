@@ -56,8 +56,13 @@ pub struct MonitorConfig {
     /// Do not restore the channels added by descents in previous runs, and
     /// forget them.
     pub forget_descents: bool,
-    /// Relay list reload period, with [`Monitor::start_from_sources`].
+    /// Relay list reload period, with [`Monitor::start_from_sources`]. A
+    /// list loaded from the same source more recently is taken from the
+    /// database at start, without downloading it (lot 20).
     pub reload_every: Duration,
+    /// Download the lists at start even if the database has recent ones
+    /// (`--reload-lists`).
+    pub reload_lists: bool,
     /// How long a preview lasts after its latest request (D21).
     pub preview_for: Duration,
 }
@@ -79,6 +84,7 @@ impl MonitorConfig {
             reinstate_all: false,
             forget_descents: false,
             reload_every: Duration::from_secs(24 * 3600),
+            reload_lists: false,
             preview_for: Duration::from_secs(300),
         }
     }
@@ -115,6 +121,9 @@ impl ListSources {
 struct Lists {
     sources: ListSources,
     sha256: BTreeMap<Platform, String>,
+    /// When the oldest list in use was loaded: the next reload is
+    /// `reload_every` after it.
+    loaded_at: i64,
 }
 
 /// Result of a reload, computed off the control loop.
@@ -265,8 +274,44 @@ impl Monitor {
     ) -> Result<Monitor> {
         let now = (config.listener.clock)();
         let mut fetched = Vec::new();
+        // Lists loaded recently from the same sources: from the database,
+        // without downloading them again (lot 20).
+        let fresh_secs = config.reload_every.as_secs() as i64;
+        let (store, recent) = if config.reload_lists {
+            (store, BTreeMap::new())
+        } else {
+            tokio::task::spawn_blocking(move || {
+                let mut recent = BTreeMap::new();
+                for p in [Platform::Ios, Platform::Android] {
+                    if let Some(last) = store.last_relay_list(p)? {
+                        recent.insert(p, last);
+                    }
+                }
+                Ok::<_, Error>((store, recent))
+            })
+            .await
+            .map_err(|_| Error::MonitorStopped)??
+        };
+        let mut cached = Vec::new();
         for (platform, source) in sources.each() {
-            fetched.push((platform, source.clone(), fetch(&source, platform).await));
+            match recent.get(&platform) {
+                Some(last)
+                    if last.source == source.describe()
+                        && now - last.loaded_at < fresh_secs
+                        && now >= last.loaded_at =>
+                {
+                    cached.push((platform, last.clone()));
+                }
+                _ => fetched.push((platform, source.clone(), fetch(&source, platform).await)),
+            }
+        }
+        let mut loaded_at = now;
+        let mut loaded = Vec::new();
+        for (platform, last) in cached {
+            let dir = RelayDirectory::parse(&last.csv, platform);
+            tracing::info!(platform = platform.as_str(), source = %last.source, relays = dir.len(), age_min = (now - last.loaded_at) / 60, "relay list from the database (recent)");
+            loaded_at = loaded_at.min(last.loaded_at);
+            loaded.push((platform, dir, last.sha256));
         }
         // Database work off the async threads; logging back here.
         let (store, outcomes) = tokio::task::spawn_blocking(move || {
@@ -302,7 +347,6 @@ impl Monitor {
         })
         .await
         .map_err(|_| Error::MonitorStopped)??;
-        let mut loaded = Vec::new();
         for (platform, source, outcome) in outcomes {
             let (platform_name, source) = (platform.as_str(), source.describe());
             match outcome {
@@ -340,6 +384,7 @@ impl Monitor {
         let mut lists = Lists {
             sources,
             sha256: BTreeMap::new(),
+            loaded_at,
         };
         let (mut ios, mut android) = (None, None);
         for (platform, dir, sha) in loaded {
@@ -624,8 +669,14 @@ impl State {
         let mut ticker = tokio::time::interval(self.config.tick);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         let every = self.config.reload_every;
+        // The first reload `every` after the oldest list was loaded (it may
+        // come from the database).
+        let first = self.lists.as_ref().map_or(every, |l| {
+            let age = (self.now() - l.loaded_at).clamp(0, every.as_secs() as i64) as u64;
+            every - Duration::from_secs(age)
+        });
         let mut reload_timer = self.lists.is_some().then(|| {
-            let mut t = tokio::time::interval_at(tokio::time::Instant::now() + every, every);
+            let mut t = tokio::time::interval_at(tokio::time::Instant::now() + first, every);
             t.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             t
         });

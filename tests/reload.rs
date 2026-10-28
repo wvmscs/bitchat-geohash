@@ -194,6 +194,9 @@ async fn start_falls_back_to_the_last_valid_list() {
     drop(monitor.shutdown().await.unwrap());
 
     *body.lock().unwrap() = None;
+    // A day later: the list is downloaded again (a recent one would come
+    // from the database).
+    clock.set(clock.get() + 25 * 3600);
     let monitor = Monitor::start_from_sources(
         config("u09tv", &clock),
         ios_from(&url),
@@ -235,6 +238,9 @@ async fn start_rejects_a_conflicting_ios_list_for_the_last_valid_one() {
     drop(monitor.shutdown().await.unwrap());
 
     *body.lock().unwrap() = Some(conflicting_csv(&b));
+    // A day later: the list is downloaded again (a recent one would come
+    // from the database).
+    clock.set(clock.get() + 25 * 3600);
     let monitor = Monitor::start_from_sources(
         config("u09tv", &clock),
         ios_from(&url),
@@ -349,4 +355,68 @@ async fn retirements_survive_a_list_change() {
     monitor.reinstate(vec!["u09tv".into()]).await.unwrap();
     eventually("REQ on B", || !rec_b.frames_of("REQ").is_empty()).await;
     drop(monitor.shutdown().await.unwrap());
+}
+
+// --- Lot 20: recent lists from the database ---
+
+#[tokio::test]
+async fn a_recent_list_is_not_downloaded_again() {
+    let (logs, _guard) = Logs::capture();
+    let db = TempDb::new("reload-recent");
+    let (a, _rec_a) = recording_relay(false).await;
+    let (b, _rec_b) = recording_relay(false).await;
+    let (url, body) = list_server(Some(list_csv(&[&a]))).await;
+    let clock = TestClock::new();
+    let start = |config: MonitorConfig, url: &str| {
+        let (db, sources) = (db.0.clone(), ios_from(url));
+        async move {
+            Monitor::start_from_sources(config, sources, Store::open(&db).unwrap())
+                .await
+                .unwrap()
+        }
+    };
+    let relays = async |m: Monitor| {
+        let r = m.status().await.unwrap().relays;
+        drop(m.shutdown().await.unwrap());
+        r
+    };
+    // First start: downloaded.
+    assert_eq!(
+        relays(start(config("u09tv", &clock), &url).await).await,
+        std::slice::from_ref(&a)
+    );
+
+    // The list changes on the server; within 24 h a start takes the one in
+    // the database, without asking for it.
+    *body.lock().unwrap() = Some(list_csv(&[&b]));
+    clock.set(clock.get() + 3600);
+    assert_eq!(
+        relays(start(config("u09tv", &clock), &url).await).await,
+        std::slice::from_ref(&a)
+    );
+    assert_eq!(logs.info_lines("relay list from the database (recent)"), 1);
+
+    // Asked for (`--reload-lists`): downloaded.
+    let forced = MonitorConfig {
+        reload_lists: true,
+        ..config("u09tv", &clock)
+    };
+    assert_eq!(
+        relays(start(forced, &url).await).await,
+        std::slice::from_ref(&b)
+    );
+
+    // After 24 h, or from another source: downloaded.
+    *body.lock().unwrap() = Some(list_csv(&[&a]));
+    clock.set(clock.get() + 24 * 3600);
+    assert_eq!(
+        relays(start(config("u09tv", &clock), &url).await).await,
+        std::slice::from_ref(&a)
+    );
+    let (other, _) = list_server(Some(list_csv(&[&b]))).await;
+    assert_eq!(
+        relays(start(config("u09tv", &clock), &other).await).await,
+        [b]
+    );
+    assert_eq!(logs.info_lines("relay list from the database (recent)"), 1);
 }
