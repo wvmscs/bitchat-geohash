@@ -187,6 +187,22 @@ async fn main() {
     {
         fail("cannot serve the map", explain(&Error::Io(e), listen))
     }
+    // Likewise a missing certificate or key: `serve` checks the contents.
+    if let Some(tls) = &args.server.tls {
+        for path in [&tls.cert, &tls.key] {
+            if let Err(e) = std::fs::File::open(path) {
+                let cwd = std::env::current_dir().unwrap_or_default();
+                fail(
+                    "cannot serve the map",
+                    format!(
+                        "cannot read {} ({e}); relative paths start from {}",
+                        path.display(),
+                        cwd.display()
+                    ),
+                )
+            }
+        }
+    }
     let store = Store::open(&db).unwrap_or_else(|e| fail(&format!("cannot open {db}"), e));
     let monitor = Monitor::start_from_sources(config.clone(), sources, store)
         .await

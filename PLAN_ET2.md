@@ -21,7 +21,7 @@ Règle : seuls les fichiers de `bitchat-geohash/` sont modifiés ; le dépôt re
 | 15 | Interaction : descente au clic, réintégration, remontée | ✅ |
 | 16 | Calques relais et mailles (somme des enfants) | ✅ |
 | 17 | CLI `bitchat-geohash` | ✅ |
-| 18 | Validation sur le réseau réel et dans le navigateur | ⬜ |
+| 18 | Validation sur le réseau réel et dans le navigateur | ✅ |
 
 La numérotation continue celle de l'étape 1. Ordre : 10 → 11 → 11 bis → 12 sont côté librairie ;
 13 dépend de 12 ; 13 bis dépend de 13 ; 14 dépend de 13 ; 15 et 16 sont indépendants entre eux ; 17 peut démarrer
@@ -388,21 +388,27 @@ traité côté page (`ringed`), `RelayView` ne change pas.
 Tests : analyse des arguments (unitaires) ; démarrage du binaire sur listes figées et
 `TestRelay`, `GET /api/state` répond (`tests/cli.rs`).
 
-### Lot 18 : validation réelle ⬜
+### Lot 18 : validation réelle ✅
 
-- [ ] Boucle fermée sur `wss://relay.famillevital.club` (liste à ce seul relais, `nak`, clé
+- [x] Boucle fermée sur `wss://relay.famillevital.club` (liste à ce seul relais, `nak`, clé
       jetable) : l'événement apparaît **sur la carte** en moins de 5 s, dans la bonne cellule
-      et elle seule (critère de la spec).
-- [ ] Message de l'app BitChat de l'utilisateur dans un canal observé, puis descente au clic
-      dans ce canal et second message à un niveau plus fin.
-- [ ] `u09` profondeur 2 sur les listes officielles, 30 min : fluidité, mémoire du serveur et
+      et elle seule (critère de la spec). Mesuré : 1,8 s, `u09tvw` seule.
+- [x] Message de l'app BitChat de l'utilisateur dans un canal observé, puis descente au clic
+      dans ce canal et second message à un niveau plus fin (`#u09tz` puis `#u09tzj`).
+- [x] `u09` profondeur 2 sur les listes officielles, 30 min : fluidité, mémoire du serveur et
       du navigateur, débit SSE (octets par minute), retraits visibles sur la carte.
-- [ ] Contrôle des messages envoyés au navigateur (capture de `/api/events`) : aucune pubkey,
+- [x] Contrôle des messages envoyés au navigateur (capture de `/api/events`) : aucune pubkey,
       aucun nickname, aucun contenu.
-- [ ] Safari et un navigateur Chromium ; largeur téléphone.
-- [ ] TLS avec un certificat `mkcert` : HTTP/2 négocié (onglet réseau), 8 onglets ouverts
-      sans blocage ; sans TLS, message « too many tabs » au 7ᵉ onglet.
-- [ ] Mesures et captures dans le journal ; capture d'écran dans le README ou la PR.
+- [x] Safari (essai de l'utilisateur, 28/10/2026) ; Chromium ; largeur téléphone (360 px).
+- [x] TLS, HTTP/2 négocié, 8 onglets ouverts sans blocage : vérifié dans Chrome avec le
+      certificat de test du dépôt (Chrome dédié qui ne fait confiance qu'à cette clé). Reste
+      l'essai dans le navigateur de l'utilisateur avec le certificat `mkcert` (fait au test de l'app ci-dessus) (installé le
+      28/10/2026 ; `localhost+2.pem` créé dans la crate, ignoré par git ; `curl` : HTTP/2, 200).
+- [x] Sans TLS : le critère « message too many tabs au 7ᵉ onglet » est **inatteignable** :
+      au-delà de 6 flux, la page même du nouvel onglet ne se charge plus. Corrigé autrement
+      (D22) : un onglet caché depuis 10 s libère son flux et le reprend quand il redevient
+      visible.
+- [x] Mesures et captures dans le journal ; capture d'écran dans le README (`docs/map.jpg`).
 
 Fini quand : tous les critères d'acceptation de la spec sont vérifiés, navigateur compris.
 
@@ -422,6 +428,7 @@ Fini quand : tous les critères d'acceptation de la spec sont vérifiés, naviga
 | D18 | Liste iOS où un hôte figure à deux coordonnées (l'app la refuse) | Refusée comme l'app : WARN et repli sur la dernière liste valide en base ; acceptée avec WARN s'il n'y en a aucune | ✅ |
 | D19 | Coordonnées hors bornes (Android les accepte) | Ligne rejetée et comptée, comme avant | ✅ |
 | D20 | Cellule (ou maille) de niveau 6 sous *k* : que montrer ? | Tous les chiffres, participants compris : seuil *k* désactivé par défaut (`k_threshold` = 0), gardé en option (il ne masque alors que les participants) ; spec §5 et invariant 1 corrigés | ✅ |
+| D22 | HTTP/1.1 : 6 connexions par hôte, chaque onglet ouvert en garde une | Un onglet caché depuis 10 s ferme son flux SSE (« paused while the tab is hidden ») et le rouvre, avec un nouveau `hello`, quand il redevient visible ; HTTPS (HTTP/2, D17) reste la solution complète | ✅ |
 | D21 | Aperçu du niveau inférieur au survol : écoute durable ou temporaire ? | Temporaire : canaux ajoutés au plan sans rien enregistrer, retirés du plan 5 min après la dernière demande (pas « retirés » au sens de l'invariant 5, qui ne vaut que pour les canaux surveillés pour de bon) ; ils comptent dans le plafond mais cèdent la place, le plus ancien d'abord, à un autre aperçu ou à une descente ; une descente les rend permanents. Délai d'appui 400 ms côté page, au plus une demande par cellule et par minute. Limite : les événements sont éphémères, l'aperçu ne montre que l'activité qui arrive pendant l'écoute (plus le peu que `since` ramène) | ✅ (à valider par l'utilisateur) |
 
 ## Risques
@@ -472,3 +479,9 @@ Fini quand : tous les critères d'acceptation de la spec sont vérifiés, naviga
 | 27/10/2026 | — | Lot 15 commité (`00a6640`). |
 | 27/10/2026 | 16 | Calques relais (épingles par statut et plateforme, anneau, fenêtre, traits au survol) et mailles (niveaux 2 à 6, `meshes` dans `hello` et en delta, `Params.mesh_levels`, `Push::Hello.params` en `Box` pour clippy). Chrome headless sur `u09` profondeur 2 réel : 13 épingles, 8 traits au survol (6 tiretés : relais d'une seule app), mailles de niveau 4 (13 actives) et 3 (`#u09` : 72 canaux actifs, 222 présences), URL `&show=meshes&relays=1` relue, console propre. Défaut corrigé : infobulle écrasée au bord de la carte (largeur minimale). |
 | 27/10/2026 | 17 | Module `cli` partagé avec `watch`, binaire complet (options de la spec, résumé au démarrage, `--open`, `--verbose`, codes de sortie et messages). `tests/cli.rs` : binaire lancé sur une liste locale et un `TestRelay`, `GET /api/state`, arrêt propre sur SIGINT ; échecs (option inconnue, geohash invalide, plafond, port occupé, adresse non locale, pas de liste). 156 tests Rust (123 sans la feature), stables sur 3 lancements, `--locked` ; 10 tests `node` ; clippy propre. Essai réel `u09tv` : résumé (7 relais écoutés, 1 écarté), port occupé → message et code 1, Ctrl-C → arrêt propre. |
+| 27/10/2026 | — | Lots 16 (`ef893f1`) et 17 (`959b346`) commités. |
+| 28/10/2026 | 18 | **Boucle fermée** (`u09tv`, liste au seul `relay.famillevital.club`, kind 20000 de `nak` avec clé jetable dans `u09tvw`) : sur la page 1,8 s après le début de la publication, `u09tvw` seule modifiée, relais « delivered » ; ni pubkey, ni id, ni contenu dans l'état. **30 min sur `u09` profondeur 2** (listes officielles, 1 056 canaux, 12 relais écoutés, 1 écarté) : serveur 23 à 34 Mo (RSS) sans croissance ; onglet Chrome : tas JS 6 à 8,4 Mo, 1 024 rectangles, console propre ; flux SSE 7,2 Mo dont `hello` 1,47 Mo, puis ~200 Ko/min (1 604 messages : 473 `cells`, 465 `meshes`, 467 `status`, 198 `relays`) ; 974 canaux retirés après 15 min sans événement (journalisés), 4 relais déconnectés faute de canal surveillé ; 6 044 événements non comptés, presque tous des doublons entre relais. Capture du flux : aucune suite hexadécimale de plus de 10 caractères, aucune clé de champ personnelle. **HTTP/1.1** : au 6ᵉ-7ᵉ onglet, la page ne se charge plus du tout (le message prévu ne peut s'afficher) → D22, vérifié (5 onglets cachés « paused », 3 nouveaux en direct, l'onglet rendu visible reprend). **HTTPS** (certificat de test, Chrome dédié) : 8 onglets en direct, tout en `h2`, les 8 flux `/api/events` sur une seule connexion. 360 px : pas de défilement horizontal. Base SQLite : 136 Ko après 30 min. |
+| 28/10/2026 | 18 | D22 validée. Safari essayé par l'utilisateur. `mkcert` installé par l'utilisateur ; certificat `localhost+2.pem` créé (ignoré par git) ; serveur en HTTPS : HTTP/2 et 200 sur `localhost` et `127.0.0.1`. Un serveur orphelin d'un essai raté de `tests/cli.rs` arrêté. |
+| 28/10/2026 | 17 | **Défaut corrigé** (signalé par l'utilisateur, lancement depuis `Nostr/` avec des chemins relatifs à la crate) : un certificat ou une clé introuvable n'était signalé qu'après les listes et les probes (8 s). Vérifié désormais avant tout, avec le dossier de départ des chemins relatifs ; test ajouté dans `tests/cli.rs`. |
+| 28/10/2026 | 18 | **App réelle** (iOS 1.8.0 de l'utilisateur, carte en HTTPS `mkcert` sur `u09t`) : message dans `#u09tz` (niveau 5) → 1 message, 1 participant, livré par `nostr.wild-vibes.ts.net` et `relay-fra.zombi.cloudrodion.com` ; descente au clic dans `u09tz` ; message dans `#u09tzj` (niveau 6) → 1 message, 1 participant, livré par `nostr.wild-vibes.ts.net`. Aucune présence (utilisateur téléporté, conforme au comportement de l'app). 544 cellules de niveau 6 au total : la descente et des aperçus de survol (D21), temporaires. |
+| 28/10/2026 | 18 | `README.md` ajouté (présentation, lancement HTTP et HTTPS, usage de la carte), capture `docs/map.jpg` (300 Ko, carte réelle de `u09t` en HTTPS, colorée par participants, relais affichés). Lot 18 terminé. |

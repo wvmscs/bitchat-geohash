@@ -27,6 +27,7 @@ svg.defs { position: absolute; width: 0; height: 0; }
 #panel .link.live .dot { background: var(--ok); }
 #panel .link.reconnecting .dot, #panel .link.connecting .dot { background: var(--auth); }
 #panel .link.tabs .dot { background: var(--down); }
+#panel .link.paused .dot { background: var(--unprobed); }
 #panel .stats { margin: 6px 0; font-size: 13px; }
 #panel .controls { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
 #panel select { flex: 1 1 140px; min-width: 0; font: inherit; font-size: 13px; padding: 3px;

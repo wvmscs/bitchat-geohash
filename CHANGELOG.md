@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Fixed
+- Binary: a missing `--tls-cert` or `--tls-key` file is reported at once, with the directory relative paths start from, instead of after the relay lists and probes.
+- Map page over HTTP/1.1: a hidden tab lets go of its live stream after 10 s and takes it back when shown (D22). Each open stream holds one of the browser's 6 connections per host, and past them a new tab could not even load the page. HTTPS (HTTP/2) carries every stream on one connection.
 - Map tiles blocked by OpenStreetMap under Firefox (403 "Access blocked"): the tile requests now carry the page origin as `Referer` (Leaflet `referrerPolicy`), as the OSM tile policy requires; the rest of the page keeps `no-referrer`.
 - Map page: cells without colour can be hovered and clicked inside (transparent fill; an unfilled SVG shape only reacts on its outline).
 - Relay choice: each app's own rule (step 2, lot 11 bis, from bitchat-envelope's relay selection corrections). iOS keeps one entry per normalised host (first coordinates) and takes exactly 5 by (distance, host); Android keeps raw lines (`host` and `host:443` are two entries) and takes exactly 5 by distance, stable, so it can pick a server twice. No more ties beyond the 5th slot.
@@ -16,6 +18,7 @@
 - An iOS list with a host at two coordinates (`RelayDirectory::conflict`, `Error::RelayListConflict`) is rejected as the app does: the last valid list in the database is used, or the current one on reload; with none, it is used with a warning (D18).
 
 ### Added
+- `README.md` with a screenshot of the map (`docs/map.jpg`), how to run it over HTTP and HTTPS (step 2, lot 18).
 - `bitchat-geohash` binary, full command line (step 2, lot 17): the spec's options (`--levels`, `--max-cells`, `--window`, `--inactivity`, list sources, `--no-probe`, `--reinstate-all`, `--forget-descents`, `--open`, `--verbose`…), a start-up summary on stderr (channels, relays and verdicts) then `map: <url>`, exit code 2 for a wrong command line and 1 for a start-up failure, with messages in the command line's words (busy port checked before the probes). `cli` module: option parsing shared with the `watch` example.
 - Map layers (step 2, lot 16): relays (pins by status and platform, on a ring when they share coordinates, popup, lines from the hovered cell) and meshes (activity of the channels inside, levels 2 to 6, level 3 included). Server: `meshes` in `hello` and a `meshes` SSE message, `Params.mesh_levels`, `Published::update_meshes`. Both layers kept in the URL.
 - Preview of the level below on hover (D21): `Monitor::preview` listens for a while to the channels of the next level inside a cell, saves nothing, and drops them from the plan `MonitorConfig::preview_for` (5 min) after the latest request unless a descent keeps them; previews give way, oldest first, under `max_channels`. `ListenPlan::remove`, `Aggregator::forget`, `MonitorEvent::Removed`, `CellStats.preview`, `CellView.preview`, `POST /api/preview`. The page asks after 400 ms over a cell, draws the channels below inside it and sums them up in the tooltip.

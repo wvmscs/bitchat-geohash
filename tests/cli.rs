@@ -167,6 +167,25 @@ fn start_failures_say_why() {
     let (code, err) = run(&list, &db, &["u09t", "--listen", "192.0.2.1:8080"]);
     assert_eq!(code, 1);
     assert!(err.contains("--allow-remote"), "{err}");
+
+    // A missing certificate is found before the relay list is even read.
+    let (code, err) = run(
+        &list,
+        &db,
+        &[
+            "u09t",
+            "--listen",
+            "127.0.0.1:0",
+            "--tls-cert",
+            "absent.pem",
+            "--tls-key",
+            "absent-key.pem",
+        ],
+    );
+    assert_eq!(code, 1);
+    assert!(err.contains("cannot read absent.pem"), "{err}");
+    assert!(err.contains("relative paths start from"), "{err}");
+    assert!(!err.contains("watching #"), "{err}");
 }
 
 #[test]

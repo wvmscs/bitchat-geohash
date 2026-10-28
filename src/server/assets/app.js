@@ -744,6 +744,7 @@ function updatePanel() {
   ui.link.className = "link " + state.link;
   ui.linkText.textContent = {
     live: "live", connecting: "connecting…", reconnecting: "reconnecting…", tabs: "no live stream",
+    paused: "paused while the tab is hidden",
   }[state.link];
   ui.start.textContent = state.params ? ` · #${state.params.start}` : "";
   ui.tabs.hidden = state.link !== "tabs";
@@ -932,6 +933,27 @@ function connect() {
     }
   };
 }
+
+// A hidden tab lets go of its stream after a while, and takes it again
+// (with a new `hello`) when shown: in HTTP/1.1 every open stream holds one
+// of the 6 connections per host, and past them even the page of a new tab
+// cannot load.
+const PAUSE_AFTER = 10 * 1000;
+let pauseTimer = null;
+
+function pause() {
+  clearTimeout(helloTimer);
+  clearTimeout(retryTimer);
+  if (source) source.close();
+  source = null;
+  setLink("paused");
+}
+
+document.addEventListener("visibilitychange", () => {
+  clearTimeout(pauseTimer);
+  if (document.hidden) pauseTimer = setTimeout(pause, PAUSE_AFTER);
+  else if (!source) connect();
+});
 
 buildPanel();
 updatePanel();

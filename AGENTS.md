@@ -204,6 +204,9 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
   them with `--tls-cert` / `--tls-key`. HTTP/2 then carries every SSE stream of the browser on
   one connection (HTTP/1.1 allows 6 per host). Never commit these files. A non-local address
   needs `--allow-remote` and TLS, or `--insecure-remote`.
+- A hidden tab closes its SSE stream after 10 s and reopens it when shown (D22): over
+  HTTP/1.1 open streams would otherwise use up the 6 connections per host, and a new tab
+  could not load at all. Keep it when touching `connect()`.
 - Tiles must be requested with a `Referer` (OSM tile policy): the tile layer sets
   `referrerPolicy: "strict-origin-when-cross-origin"`, overriding the page's `no-referrer`.
   Without it Firefox gets 403 "Access blocked".
