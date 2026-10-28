@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-28
+
+First version: the library (step 1) and the live map server with its `bitchat-geohash` binary (step 2).
+
 ### Fixed
 - Binary: a missing `--tls-cert` or `--tls-key` file is reported at once, with the directory relative paths start from, instead of after the relay lists and probes.
 - Map page over HTTP/1.1: a hidden tab lets go of its live stream after 10 s and takes it back when shown (D22). Each open stream holds one of the browser's 6 connections per host, and past them a new tab could not even load the page. HTTPS (HTTP/2) carries every stream on one connection.
