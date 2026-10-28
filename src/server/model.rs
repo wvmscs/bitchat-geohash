@@ -45,10 +45,7 @@ pub type Bbox = [[f64; 2]; 2];
 /// Bounding box of a geohash cell. Cells come from the plan, hence valid;
 /// an invalid one gets an empty box.
 pub fn bbox(geohash: &str) -> Bbox {
-    match geohash::decode_bbox(geohash) {
-        Ok(r) => [[r.min().y, r.min().x], [r.max().y, r.max().x]],
-        Err(_) => [[0.0; 2]; 2],
-    }
+    geohash_relays::geohash::bbox(geohash).unwrap_or([[0.0; 2]; 2])
 }
 
 fn participants(p: Option<u32>) -> Count {

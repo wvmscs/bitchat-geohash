@@ -59,3 +59,13 @@ impl From<tokio_tungstenite::tungstenite::Error> for Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl From<geohash_relays::Error> for Error {
+    fn from(e: geohash_relays::Error) -> Self {
+        match e {
+            geohash_relays::Error::InvalidGeohash(g) => Error::InvalidGeohash(g),
+            // `non_exhaustive`: a new error there reads as an invalid cell.
+            other => Error::InvalidGeohash(other.to_string()),
+        }
+    }
+}

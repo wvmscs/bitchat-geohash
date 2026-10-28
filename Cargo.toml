@@ -15,7 +15,9 @@ repository = "https://github.com/wvmscs/bitchat-geohash"
 
 [dependencies]
 k256 = { version = "0.13", default-features = false, features = ["schnorr", "std"] }
-geohash = "0.13"
+# Relay lists, the apps' relay choice, geohash arithmetic: shared with
+# bitchat-console (its decision D2), own repository.
+geohash-relays = { git = "ssh://git@github.com/wvmscs/geohash-relays.git", branch = "main" }
 tokio = { version = "1.54", features = ["rt-multi-thread", "net", "sync", "macros", "time"] }
 tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }

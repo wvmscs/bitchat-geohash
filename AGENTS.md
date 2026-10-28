@@ -143,9 +143,10 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
 - `src/nostr.rs`: NIP-01 subset: `Event` (id, Schnorr verification), `Filter`, `unix_now`.
 - `src/cli.rs`: command-line options shared by the binary and `watch` (`cli::parse`; each
   caller reads its own extra options). No argument-parsing dependency.
-- `src/directory.rs`: `RelayDirectory`, CSV parsing with each app's rules, normalisation,
-  iOS conflict check, list sources.
-- `src/select.rs`: relay choice per channel (`closest`, `select_both`), from `geo.rs`.
+- `src/directory.rs`: `RelayDirectory` (CSV parsing with each app's rules, normalisation,
+  iOS conflict check) re-exported from `geohash-relays`; list sources and download here.
+- `src/select.rs`: relay choice per channel (`closest`, `select_both`) from `geohash-relays`,
+  wrapped to return this crate's `Error`. Fix selection bugs in `geohash-relays`, not here.
 - `src/channels.rs`: `Level`, channel enumeration.
 - `src/plan.rs`: `ListenPlan` (relay → channels), filters, retire/reinstate, diff.
 - `src/store/`: SQLite `Store` and `migrations/NNNN_name.sql`.

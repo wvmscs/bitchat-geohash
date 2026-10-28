@@ -24,6 +24,7 @@ Règle : seuls les fichiers de `bitchat-geohash/` sont modifiés ; le dépôt re
 | 18 | Validation sur le réseau réel et dans le navigateur | ✅ |
 | 19 | Changement de la zone surveillée en direct (pour bitchat-console), version 0.2.0 | ✅ |
 | 20 | Changement de zone plus rapide (listes et verdicts réutilisés, sondage en arrière-plan), version 0.2.1 | ✅ |
+| 21 | Annuaire et sélection pris dans `geohash-relays` (DRY), code redondant supprimé | ✅ |
 
 La numérotation continue celle de l'étape 1. Ordre : 10 → 11 → 11 bis → 12 sont côté librairie ;
 13 dépend de 12 ; 13 bis dépend de 13 ; 14 dépend de 13 ; 15 et 16 sont indépendants entre eux ; 17 peut démarrer
@@ -456,6 +457,20 @@ Mesuré par l'utilisateur : un changement de zone affiche « changing… » une 
 - [x] Page : après un changement de zone, niveau des subdivisions de la zone (et non celui
       gardé dans l'URL pour l'ancienne), bug signalé par l'utilisateur.
 
+### Lot 21 : annuaire et sélection pris dans `geohash-relays` ✅
+
+Prévu depuis le début (D2 de bitchat-console) : une seule copie du parsing des listes et de la
+sélection des relais, celle de `geohash-relays`, que bitchat-console utilise déjà.
+
+- [x] `directory` : `RelayDirectory`, `DirectoryRelay`, `Platform`, `normalize_url` et les URL
+      des listes réexportés ; `ListSource`, `fetch` et le délai de téléchargement restent ici.
+- [x] `select` : `GeoRelay`, `Selected` réexportés ; `geohash_center`, `closest`, `select_both`
+      enveloppés pour garder l'`Error` de la crate (`From<geohash_relays::Error>`).
+- [x] `GEO_RELAY_COUNT` réexporté ; `server::model` prend le rectangle d'une cellule dans
+      `geohash_relays::geohash::bbox` ; dépendance `geohash` retirée.
+- [x] `tests/select.rs` supprimé (copie identique de celui de `geohash-relays`).
+- [x] Chemins publics inchangés ; 346 lignes supprimées, 54 ajoutées.
+
 ## Décisions
 
 | # | Question | Proposition | État |
@@ -536,3 +551,4 @@ Mesuré par l'utilisateur : un changement de zone affiche « changing… » une 
 | 28/10/2026 | 20 | Listes de relais prises dans la base si chargées il y a moins de 24 h (demande de l'utilisateur), `--reload-lists`. 160 tests. Mesure réelle : le changement `u09t` → `u09w` reste à 8,1 s, presque tout le sondage d'un relais mort ; vérification à la demande de l'utilisateur : 75 relais pour toute la zone `u0` (1 089 canaux), 6 à 9 par cellule. |
 | 28/10/2026 | 20 | Sondages : verdicts récents repris, relais du canal de la zone d'abord, les autres en arrière-plan (D24) ; page : niveau des subdivisions après un changement de zone. 163 tests. Mesuré : démarrage 4 ms (listes et verdicts de la base), `u09t` → `u09w` 0,5 s, `spey` (jamais vue) 0,5 s. Version 0.2.1. |
 | 28/10/2026 | — | Workspace Cargo propre (`[workspace]` dans `Cargo.toml`, `/target` ignoré), comme bitchat-console et bitchat-launcher, à la demande de l’utilisateur (lecture seule levée) ; retiré des membres de `Nostr/Cargo.toml`. `Cargo.lock` de la crate à jour (il datait de la 0.1.0). Version 0.2.2. |
+| 29/10/2026 | 21 | Annuaire et sélection pris dans `geohash-relays` (DRY), à la demande de l'utilisateur ; dépendance `geohash` retirée, `tests/select.rs` supprimé (copie). 147 tests Rust (111 sans la feature), 10 JS ; clippy propre dans les deux configurations ; `reuse lint` conforme. |

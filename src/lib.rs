@@ -32,9 +32,8 @@ pub use error::{Error, Result};
 pub const KIND_GEO_MESSAGE: u32 = 20000;
 /// Location-channel presence heartbeat (ephemeral).
 pub const KIND_GEO_PRESENCE: u32 = 20001;
-/// Relays the app sends location-channel traffic to: the closest to the
-/// channel centre, per app (Android may count one server twice).
-pub const GEO_RELAY_COUNT: usize = 5;
+/// Relays each app picks per channel (5).
+pub use geohash_relays::GEO_RELAY_COUNT;
 
 /// Installs ring as the process-wide rustls crypto provider, needed before
 /// any `wss://` connection or HTTPS download. Calling it again is harmless.
