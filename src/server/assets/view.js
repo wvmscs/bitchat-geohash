@@ -140,6 +140,12 @@ export function refusalText(body) {
       return "no channel level below this one";
     case "outside_area":
       return `refused: outside the watched area #${body.start}`;
+    case "invalid_geohash":
+      return "not a geohash: 2 to 7 characters among 0-9 and b-z, without a, i, l, o";
+    case "area_fixed":
+      return "this map watches a fixed area";
+    case "monitor_stopped":
+      return "the area is changing: try again in a moment";
     default:
       return "refused: " + ((body && body.message) || "unknown error");
   }

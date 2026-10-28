@@ -376,14 +376,24 @@ pub struct Published {
 
 impl Published {
     pub fn new(params: Params) -> Self {
+        Self::starting_at(params, 0)
+    }
+
+    /// Empty, its next message numbered `seq + 1` (an area change keeps
+    /// the numbering of the open streams going).
+    pub fn starting_at(params: Params, seq: u64) -> Self {
         Published {
             params,
-            seq: 0,
+            seq,
             cells: BTreeMap::new(),
             meshes: Vec::new(),
             relays: Vec::new(),
             status: None,
         }
+    }
+
+    pub fn params(&self) -> &Params {
+        &self.params
     }
 
     /// Sequence number of the last message.

@@ -22,6 +22,7 @@ Règle : seuls les fichiers de `bitchat-geohash/` sont modifiés ; le dépôt re
 | 16 | Calques relais et mailles (somme des enfants) | ✅ |
 | 17 | CLI `bitchat-geohash` | ✅ |
 | 18 | Validation sur le réseau réel et dans le navigateur | ✅ |
+| 19 | Changement de la zone surveillée en direct (pour bitchat-console), version 0.2.0 | ✅ |
 
 La numérotation continue celle de l'étape 1. Ordre : 10 → 11 → 11 bis → 12 sont côté librairie ;
 13 dépend de 12 ; 13 bis dépend de 13 ; 14 dépend de 13 ; 15 et 16 sont indépendants entre eux ; 17 peut démarrer
@@ -412,6 +413,25 @@ Tests : analyse des arguments (unitaires) ; démarrage du binaire sur listes fig
 
 Fini quand : tous les critères d'acceptation de la spec sont vérifiés, navigateur compris.
 
+### Lot 19 : changement de la zone surveillée ✅
+
+Demandé par l'utilisateur le 28/10/2026, qui lève la lecture seule de la crate pour ce lot :
+la carte doit suivre la cellule de bitchat-console (zone = parent de la cellule de la console),
+avec toutes ses fonctions, et sa page doit permettre de changer de zone.
+
+- [x] `POST /api/area {"geohash"}` : la zone est vérifiée d'abord (`monitor::check_area` :
+      geohash, plafond de canaux), sans rien arrêter si elle est refusée ; puis le monitor est
+      arrêté et relancé sur la nouvelle zone avec la même base (retraits, descentes et probes
+      gardés ; seuls les canaux de la zone sont restaurés). Échec du démarrage : retour à la
+      zone précédente, base rouverte. Même zone : rien. Une zone fixe (`serve`, sans
+      `Relaunch`) répond `409 area_fixed` (D23).
+- [x] Pages ouvertes : un `hello` complet sur leur flux, la numérotation continue ; la page
+      repart de zéro (niveau, focus) et se cadre sur la nouvelle zone.
+- [x] Page : champ « zone » et bouton « Watch » dans le panneau ; refus en clair.
+- [x] Tests : changement atteignant le flux, commandes suivant la nouvelle zone, refus sans
+      effet, zone fixe ; essai réel dans Chrome avec bitchat-console par-dessus (`u09t` →
+      `u09w` depuis la console en 8,5 s, retour par le champ de la page).
+
 ## Décisions
 
 | # | Question | Proposition | État |
@@ -430,6 +450,7 @@ Fini quand : tous les critères d'acceptation de la spec sont vérifiés, naviga
 | D20 | Cellule (ou maille) de niveau 6 sous *k* : que montrer ? | Tous les chiffres, participants compris : seuil *k* désactivé par défaut (`k_threshold` = 0), gardé en option (il ne masque alors que les participants) ; spec §5 et invariant 1 corrigés | ✅ |
 | D22 | HTTP/1.1 : 6 connexions par hôte, chaque onglet ouvert en garde une | Un onglet caché depuis 10 s ferme son flux SSE (« paused while the tab is hidden ») et le rouvre, avec un nouveau `hello`, quand il redevient visible ; HTTPS (HTTP/2, D17) reste la solution complète | ✅ |
 | D21 | Aperçu du niveau inférieur au survol : écoute durable ou temporaire ? | Temporaire : canaux ajoutés au plan sans rien enregistrer, retirés du plan 5 min après la dernière demande (pas « retirés » au sens de l'invariant 5, qui ne vaut que pour les canaux surveillés pour de bon) ; ils comptent dans le plafond mais cèdent la place, le plus ancien d'abord, à un autre aperçu ou à une descente ; une descente les rend permanents. Délai d'appui 400 ms côté page, au plus une demande par cellule et par minute. Limite : les événements sont éphémères, l'aperçu ne montre que l'activité qui arrive pendant l'écoute (plus le peu que `since` ramène) | ✅ (à valider par l'utilisateur) |
+| D23 | Changer la zone surveillée en direct (lot 19) | Arrêt et relance du monitor sur la nouvelle zone avec la même base (le code de démarrage, déjà éprouvé, plutôt qu'un replanning à chaud) ; les pages reçoivent un nouveau `hello` ; quelques secondes de coupure (listes rechargées, nouveaux relais sondés) ; pas de retour en arrière automatique si le démarrage échoue autrement qu'en revenant à la zone précédente — *prise par l'agent, à revoir* | ✅ |
 
 ## Risques
 
@@ -485,3 +506,5 @@ Fini quand : tous les critères d'acceptation de la spec sont vérifiés, naviga
 | 28/10/2026 | 17 | **Défaut corrigé** (signalé par l'utilisateur, lancement depuis `Nostr/` avec des chemins relatifs à la crate) : un certificat ou une clé introuvable n'était signalé qu'après les listes et les probes (8 s). Vérifié désormais avant tout, avec le dossier de départ des chemins relatifs ; test ajouté dans `tests/cli.rs`. |
 | 28/10/2026 | 18 | **App réelle** (iOS 1.8.0 de l'utilisateur, carte en HTTPS `mkcert` sur `u09t`) : message dans `#u09tz` (niveau 5) → 1 message, 1 participant, livré par `nostr.wild-vibes.ts.net` et `relay-fra.zombi.cloudrodion.com` ; descente au clic dans `u09tz` ; message dans `#u09tzj` (niveau 6) → 1 message, 1 participant, livré par `nostr.wild-vibes.ts.net`. Aucune présence (utilisateur téléporté, conforme au comportement de l'app). 544 cellules de niveau 6 au total : la descente et des aperçus de survol (D21), temporaires. |
 | 28/10/2026 | 18 | `README.md` ajouté (présentation, lancement HTTP et HTTPS, usage de la carte), capture `docs/map.jpg` (300 Ko, carte réelle de `u09t` en HTTPS, colorée par participants, relais affichés). Lot 18 terminé. |
+| 28/10/2026 | — | Tag `v0.1.0` posé sur `961b88b` (version 0.1.0). |
+| 28/10/2026 | 19 | Changement de zone en direct (`POST /api/area`, champ « zone » de la page), D23 ; version 0.2.0. Demande de l'utilisateur pour bitchat-console (lecture seule levée pour ce lot). 159 tests Rust, 10 JS ; Chrome headless : `u09t` → `u09w` en 8,5 s depuis la console, retour par le champ. |

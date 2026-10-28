@@ -720,6 +720,29 @@ function buildPanel() {
   const controls = el("div", "controls");
   controls.append(ui.show, ui.level, ui.scale, relaysLabel);
 
+  // The watched area (lot 19): watching another one starts over there.
+  ui.area = el("input");
+  ui.area.placeholder = "area, e.g. u09t";
+  ui.area.setAttribute("aria-label", "watched area (geohash)");
+  ui.area.spellcheck = false;
+  const watch = el("button", null, "Watch");
+  const areaResult = el("span", "warn small");
+  const changeArea = async () => {
+    const geohash = ui.area.value.trim().toLowerCase();
+    if (!geohash || (state.params && geohash === state.params.start)) return;
+    watch.disabled = true;
+    watch.textContent = "changing…";
+    areaResult.textContent = "";
+    const { ok, data } = await command("/api/area", { geohash });
+    watch.disabled = false;
+    watch.textContent = "Watch";
+    if (!ok) areaResult.textContent = refusalText(data);
+  };
+  watch.addEventListener("click", changeArea);
+  ui.area.addEventListener("keydown", e => { if (e.key === "Enter") changeArea(); });
+  const area = el("div", "area");
+  area.append(ui.area, watch, areaResult);
+
   const legend = el("div", "legend");
   const bar = el("div", "bar");
   bar.style.background = `linear-gradient(to right, ${PALETTE.join(", ")})`;
@@ -735,7 +758,7 @@ function buildPanel() {
     el("span", null, "hover a cell: lines to its relays, dashed for one app"));
   legend.append(bar, ends, keys, ui.relayKeys);
 
-  body.append(ui.crumbs, ui.stats, ui.reinstateAll, controls, legend, el("div", "note muted",
+  body.append(area, ui.crumbs, ui.stats, ui.reinstateAll, controls, legend, el("div", "note muted",
     "Presences are not comparable between levels: the apps send heartbeats at levels 2, 4 and 5 only."));
   panel.append(head, ui.link, ui.tabs, body);
 }
@@ -827,7 +850,16 @@ function setLink(link) {
 }
 
 function onHello(d) {
+  // Another area (lot 19): start over, framed on the new one.
+  const moved = state.params !== null && state.params.start !== d.params.start;
+  if (moved) {
+    if (state.level !== null) groups.get(state.level)?.remove();
+    state.level = null;
+    state.focus = null;
+    state.home = null;
+  }
   state.params = d.params;
+  if (document.activeElement !== ui.area) ui.area.value = d.params.start;
   if (!tiles) {
     tiles = L.tileLayer(d.params.tiles, {
       maxZoom: 19,

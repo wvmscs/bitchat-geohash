@@ -16,9 +16,9 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::sync::{broadcast, watch};
 
+use super::area::Holder;
 use super::model::{Published, Push};
 use crate::error::Error;
-use crate::monitor::Monitor;
 
 /// The state sent to the browsers: the last one published, and the channel
 /// its deltas go out on.
@@ -29,7 +29,7 @@ pub(crate) struct Live {
 
 #[derive(Clone)]
 pub(crate) struct AppState {
-    pub(crate) monitor: Arc<Monitor>,
+    pub(crate) holder: Arc<Holder>,
     pub(crate) live: Arc<Live>,
     pub(crate) streams: Arc<AtomicUsize>,
     pub(crate) max_streams: usize,
@@ -89,6 +89,7 @@ impl From<Error> for ApiError {
             Error::MonitorStopped => {
                 ApiError::new(StatusCode::SERVICE_UNAVAILABLE, "monitor_stopped", message)
             }
+            Error::AreaFixed => ApiError::new(StatusCode::CONFLICT, "area_fixed", message),
             _ => ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "internal", message),
         }
     }
@@ -185,9 +186,15 @@ pub(crate) async fn descend(
 ) -> Result<Json<Value>, ApiError> {
     let Json(body) = body?;
     tracing::info!(geohash = %body.geohash, "command: descend");
-    let added = s.monitor.descend(&body.geohash).await.inspect_err(|e| {
-        tracing::info!(geohash = %body.geohash, error = %e, "descend refused");
-    })?;
+    let added = s
+        .holder
+        .get()
+        .await?
+        .descend(&body.geohash)
+        .await
+        .inspect_err(|e| {
+            tracing::info!(geohash = %body.geohash, error = %e, "descend refused");
+        })?;
     Ok(Json(json!({ "added": added })))
 }
 
@@ -199,9 +206,15 @@ pub(crate) async fn preview(
 ) -> Result<Json<Value>, ApiError> {
     let Json(body) = body?;
     tracing::debug!(geohash = %body.geohash, "command: preview");
-    let added = s.monitor.preview(&body.geohash).await.inspect_err(|e| {
-        tracing::info!(geohash = %body.geohash, error = %e, "preview refused");
-    })?;
+    let added = s
+        .holder
+        .get()
+        .await?
+        .preview(&body.geohash)
+        .await
+        .inspect_err(|e| {
+            tracing::info!(geohash = %body.geohash, error = %e, "preview refused");
+        })?;
     Ok(Json(json!({ "added": added })))
 }
 
@@ -221,10 +234,10 @@ pub(crate) async fn reinstate(
     let Json(body) = body?;
     let back = if body.all {
         tracing::info!("command: reinstate all");
-        s.monitor.reinstate_all().await?
+        s.holder.get().await?.reinstate_all().await?
     } else if !body.channels.is_empty() {
         tracing::info!(channels = body.channels.len(), "command: reinstate");
-        s.monitor.reinstate(body.channels).await?
+        s.holder.get().await?.reinstate(body.channels).await?
     } else {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
@@ -233,4 +246,20 @@ pub(crate) async fn reinstate(
         ));
     };
     Ok(Json(json!({ "reinstated": back })))
+}
+
+/// `POST /api/area {"geohash": "u09t"}`: watches that area instead (lot 19).
+/// Answers once the new area is watched; the pages get a new `hello`.
+pub(crate) async fn area(
+    State(s): State<AppState>,
+    body: Result<Json<DescendBody>, JsonRejection>,
+) -> Result<Json<Value>, ApiError> {
+    let Json(body) = body?;
+    tracing::info!(geohash = %body.geohash, "command: area");
+    let config = s.holder.change(&body.geohash).await.inspect_err(|e| {
+        tracing::info!(geohash = %body.geohash, error = %e, "area change refused");
+    })?;
+    Ok(Json(
+        json!({ "start": config.start, "depth": config.depth }),
+    ))
 }

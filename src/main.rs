@@ -20,7 +20,7 @@ use std::path::PathBuf;
 use bitchat_geohash::Error;
 use bitchat_geohash::cli::{self, MONITOR_USAGE, MonitorArgs};
 use bitchat_geohash::monitor::{Monitor, MonitorConfig, MonitorStatus, RelayInfo};
-use bitchat_geohash::server::{ServerConfig, TlsFiles, serve};
+use bitchat_geohash::server::{Relaunch, ServerConfig, TlsFiles, serve_with};
 use bitchat_geohash::store::Store;
 
 const SERVER_USAGE: &str = "[--listen 127.0.0.1:8080] [--allow-remote] \
@@ -204,14 +204,19 @@ async fn main() {
         }
     }
     let store = Store::open(&db).unwrap_or_else(|e| fail(&format!("cannot open {db}"), e));
-    let monitor = Monitor::start_from_sources(config.clone(), sources, store)
+    let monitor = Monitor::start_from_sources(config.clone(), sources.clone(), store)
         .await
         .unwrap_or_else(|e| fail("cannot start", explain(&e, listen)));
     match (monitor.status().await, monitor.relays().await) {
         (Ok(status), Ok(relays)) => summary(&config, &status, &relays),
         (Err(e), _) | (_, Err(e)) => fail("cannot start", e),
     }
-    let server = serve(monitor, &config, args.server)
+    // The page can change the watched area (lot 19).
+    let relaunch = Relaunch::Sources {
+        sources,
+        db: db.clone(),
+    };
+    let server = serve_with(monitor, &config, Some(relaunch), args.server)
         .await
         .unwrap_or_else(|e| fail("cannot serve the map", explain(&e, listen)));
     let url = format!("{}/", server.url());

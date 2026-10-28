@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use bitchat_geohash::monitor::{Monitor, MonitorConfig};
 use bitchat_geohash::nostr::Event;
-use bitchat_geohash::server::{Asset, Server, ServerConfig, router, serve};
+use bitchat_geohash::server::{Asset, Relaunch, Server, ServerConfig, router, serve, serve_with};
 use bitchat_geohash::store::Store;
 use bitchat_geohash::{Error, KIND_GEO_MESSAGE};
 use common::*;
@@ -101,6 +101,14 @@ struct Running {
 
 impl Running {
     async fn start(tune: impl FnOnce(&mut MonitorConfig, &mut ServerConfig)) -> Self {
+        Self::start_with(tune, false).await
+    }
+
+    /// With `relaunch`, the watched area can change (lot 19).
+    async fn start_with(
+        tune: impl FnOnce(&mut MonitorConfig, &mut ServerConfig),
+        relaunch: bool,
+    ) -> Self {
         bitchat_geohash::install_crypto_provider();
         let relay = TestRelay::spawn("127.0.0.1:0").await.unwrap();
         let clock = TestClock::new();
@@ -120,7 +128,22 @@ impl Running {
         .await
         .unwrap();
         status_until(&monitor, "connected", connected).await;
-        let server = serve(monitor, &config, server).await.unwrap();
+        let server = if relaunch {
+            let db = std::env::temp_dir().join(format!(
+                "bitchat-geohash-area-{}.sqlite",
+                std::process::id()
+            ));
+            let relaunch = Relaunch::Fixed {
+                ios: Some(directory_of(&[relay.url()])),
+                android: None,
+                db: db.display().to_string(),
+            };
+            serve_with(monitor, &config, Some(relaunch), server)
+                .await
+                .unwrap()
+        } else {
+            serve(monitor, &config, server).await.unwrap()
+        };
         Running {
             relay,
             clock,
@@ -497,4 +520,61 @@ async fn remote_address_needs_allow_remote() {
         serve(monitor, &config, server).await,
         Err(Error::RemoteListen(_))
     ));
+}
+
+// --- Lot 19: the watched area changes ---
+
+#[tokio::test]
+async fn the_area_changes_and_the_pages_start_over() {
+    let r = Running::start_with(|_, _| {}, true).await;
+    let mut sse = SseReader::open(&r.url("/api/events")).await;
+    let (_, _, hello) = sse.next().await.unwrap();
+    assert_eq!(hello["params"]["start"], "u09t");
+    let (status, body) = r.post("/api/area", r#"{"geohash":"U09W"}"#).await;
+    assert_eq!((status, &body["start"]), (200, &json!("u09w")), "{body}");
+    // The open stream gets a whole new state.
+    let (_, hello) = sse.until("hello", |d| d["params"]["start"] == "u09w").await;
+    let cells = hello["cells"].as_array().unwrap();
+    assert!(
+        cells.iter().any(|c| c["geohash"] == "u09wj")
+            && !cells.iter().any(|c| c["geohash"] == "u09tv"),
+        "{cells:?}"
+    );
+    assert_eq!(r.state().await["params"]["start"], "u09w");
+    // Commands follow the new area.
+    let (status, body) = r.post("/api/descend", r#"{"geohash":"u09tv"}"#).await;
+    assert_eq!((status, &body["error"]), (422, &json!("outside_area")));
+    let (status, _) = r.post("/api/descend", r#"{"geohash":"u09wj"}"#).await;
+    assert_eq!(status, 200);
+    // And deltas go on after the new `hello`.
+    r.relay.publish(message("u09wj", r.clock.get()));
+    sse.until("cells", |d| {
+        cell(&d["cells"], "u09wj").is_some_and(|c| c["messages"] == 1)
+    })
+    .await;
+    // The same area again: nothing to do.
+    let (status, body) = r.post("/api/area", r#"{"geohash":"u09w"}"#).await;
+    assert_eq!((status, &body["start"]), (200, &json!("u09w")));
+    r.stop().await;
+}
+
+#[tokio::test]
+async fn an_area_that_cannot_be_watched_changes_nothing() {
+    let r = Running::start_with(|c, _| c.max_channels = 40, true).await;
+    let (status, body) = r.post("/api/area", r#"{"geohash":"u0a"}"#).await;
+    assert_eq!((status, &body["error"]), (400, &json!("invalid_geohash")));
+    let (status, body) = r.post("/api/area", r#"{"geohash":"u0"}"#).await;
+    assert_eq!((status, &body["error"]), (409, &json!("too_many_channels")));
+    assert_eq!(r.state().await["params"]["start"], "u09t");
+    let (status, _) = r.post("/api/descend", r#"{"geohash":"u09tv"}"#).await;
+    assert_eq!(status, 409, "still the same monitor, still capped");
+    r.stop().await;
+}
+
+#[tokio::test]
+async fn a_fixed_area_says_so() {
+    let r = Running::start(|_, _| {}).await;
+    let (status, body) = r.post("/api/area", r#"{"geohash":"u09w"}"#).await;
+    assert_eq!((status, &body["error"]), (409, &json!("area_fixed")));
+    r.stop().await;
 }

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-28
+
+### Added
+- The watched area changes while the map runs (lot 19, D23): `POST /api/area {"geohash"}`, and an area field with a "Watch" button in the page's panel. The area is checked first (geohash, channel cap) and nothing stops if it is refused; then the monitor starts again on it with the same database, and the open pages get a new `hello` and frame the new area. A start that fails goes back to the previous area. `server::serve_with` takes a `Relaunch` (list sources or fixed lists, database path); `serve` keeps a fixed area (`409 area_fixed`). `monitor::check_area`, `Published::starting_at`, `Published::params`, `Error::AreaFixed`.
+- bitchat-console follows its cell with the map: it asks for the parent of its cell.
+
 ## [0.1.0] - 2026-10-28
 
 First version: the library (step 1) and the live map server with its `bitchat-geohash` binary (step 2).

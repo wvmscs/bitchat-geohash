@@ -233,6 +233,15 @@ pub struct Monitor {
     task: JoinHandle<Result<Store>>,
 }
 
+/// Checks an area before starting on it (geohash, number of channels), so
+/// that a running monitor is not stopped for an area that cannot be
+/// watched. Returns the normalised geohash.
+pub fn check_area(config: &MonitorConfig) -> Result<String> {
+    let start = normalize(&config.start)?;
+    enumerate(&start, config.depth, &config.levels, config.max_channels)?;
+    Ok(start)
+}
+
 impl Monitor {
     /// Starts watching. The store keeps the retired channels across runs;
     /// it is handed back by [`Monitor::shutdown`].

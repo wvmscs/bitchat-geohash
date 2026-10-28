@@ -29,6 +29,7 @@ On the map:
 
 - Hover a cell for its counts and relays; hovering a while also previews the level below.
 - Click a cell to descend one level, go back up, or reinstate a retired cell.
+- Type another area in the panel and press "Watch" to watch it instead, without restarting.
 - In the panel, choose the level and the scale, show the relays, or show the meshes (the
   sum of the channels inside each one).
 

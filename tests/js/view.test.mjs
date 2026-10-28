@@ -59,6 +59,8 @@ test("refusals in words", () => {
   assert.equal(v.refusalText({ error: "outside_area", start: "u09" }), "refused: outside the watched area #u09");
   assert.equal(v.refusalText({ error: "x", message: "boom" }), "refused: boom");
   assert.equal(v.refusalText(null), "refused: unknown error");
+  assert.match(v.refusalText({ error: "invalid_geohash" }), /^not a geohash/);
+  assert.equal(v.refusalText({ error: "area_fixed" }), "this map watches a fixed area");
 });
 
 test("activity below a cell (preview, D21)", () => {
