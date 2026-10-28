@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-29
+
 ### Changed
 - Relay directory and relay choice come from the `geohash-relays` crate (lot 21), the same code bitchat-console uses: `directory::{RelayDirectory, DirectoryRelay, Platform, normalize_url, IOS_LIST_URL, ANDROID_LIST_URL}`, `select::{GeoRelay, Selected}` and `GEO_RELAY_COUNT` are re-exports; `select::{geohash_center, closest, select_both}` still return this crate's `Error`. Same public paths, same results.
 
