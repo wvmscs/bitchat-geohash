@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- geohash-relays 0.1.1 (tag `v0.1.1`): its public opening, same code as 0.1.0.
+
 ### Added
 - Behind a TLS proxy (lot 22, D25): `--behind-proxy https://<name>` (`ServerConfig::proxy`,
   `ProxyConfig`, `Net`) serves clear HTTP to a proxy that does the TLS (Cloudflare Tunnel,
