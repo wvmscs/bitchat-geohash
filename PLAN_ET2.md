@@ -13,7 +13,7 @@ Règle : seuls les fichiers de `bitchat-geohash/` sont modifiés ; le dépôt re
 |---|---|---|
 | 10 | Mise en place : feature `server`, dépendances, binaire, ressources embarquées | ✅ |
 | 11 | `Monitor` : ajout de canaux à chaud (descente), relais géolocalisés, notifications | ✅ |
-| 11 bis | Correction de la sélection des relais (une règle par app), report de bitchat-envelope | ✅ |
+| 11 bis | Correction de la sélection des relais (une règle par app), report du prototype | ✅ |
 | 12 | Modèle exposé au navigateur (JSON) et test de vie privée | ✅ |
 | 13 | Serveur axum : page, état, flux SSE, commandes, protections | ✅ |
 | 13 bis | TLS optionnel, HTTP/1.1 et HTTP/2 | ✅ |
@@ -74,7 +74,7 @@ l'étape 3 (Swift, `WKWebView`) la démarrera dans le processus de l'app.
 - [x] `[[bin]] bitchat-geohash`, `required-features = ["server"]`.
 - [x] Leaflet 1.9.4 copié dans `src/server/assets/leaflet/` (licence BSD-2, compatible
       GPL-3.0 ; fichier de licence conservé), empreinte SHA-256 notée dans le journal (D10).
-- [x] Reprise de `bitchat-envelope/examples/common/map_overlay.html` par copie : styles
+- [x] Reprise de la page `map_overlay.html` du prototype par copie : styles
       (clair/sombre), fonction `el()` (texte seulement, jamais de HTML venant des relais),
       épingles de relais en anneau (`ringAnchors()` dans `app.js`).
 - [x] `AGENTS.md` : nouvelles commandes, mise en page, invariants du serveur (lot 13) ;
@@ -131,7 +131,7 @@ migration d'une base v1 avec ses canaux.
 
 ### Lot 11 bis : sélection des relais, une règle par app ✅
 
-Report de `bitchat-envelope/Documents/relay-selection-corrections.md` (27/10/2026) : la
+Report de [relay-selection-corrections.md](https://github.com/wvmscs/geohash-relays/blob/strategies/docs/relay-selection-corrections.md) (27/10/2026, copie publique dans geohash-relays) : la
 sélection appliquait la normalisation d'iOS aux deux listes et ajoutait les ex æquo du
 5ᵉ rang. Les CSV figés de `tests/data/` sont ceux du §6 du document (mêmes SHA-256).
 
@@ -154,7 +154,7 @@ refusée avec repli, acceptée avec WARN sans liste précédente.
 Le « 322 » du document compte les régions à **moins de 5** serveurs distincts (307 à 4,
 15 à 3), confirmé par un script Python indépendant de notre code. Un hôte présent à deux
 coordonnées dans les deux listes (`relay.earthly.city` sur `9q`) garde celles d'iOS pour
-l'affichage, comme dans bitchat-envelope.
+l'affichage, comme dans le prototype.
 
 ### Lot 12 : modèle exposé au navigateur ✅
 
@@ -394,7 +394,7 @@ Tests : analyse des arguments (unitaires) ; démarrage du binaire sur listes fig
 
 ### Lot 18 : validation réelle ✅
 
-- [x] Boucle fermée sur `wss://relay.famillevital.club` (liste à ce seul relais, `nak`, clé
+- [x] Boucle fermée sur `$BITCHAT_TEST_RELAY` (liste à ce seul relais, `nak`, clé
       jetable) : l'événement apparaît **sur la carte** en moins de 5 s, dans la bonne cellule
       et elle seule (critère de la spec). Mesuré : 1,8 s, `u09tvw` seule.
 - [x] Message de l'app BitChat de l'utilisateur dans un canal observé, puis descente au clic
@@ -418,7 +418,7 @@ Fini quand : tous les critères d'acceptation de la spec sont vérifiés, naviga
 
 ### Lot 19 : changement de la zone surveillée ✅
 
-Demandé par l'utilisateur le 28/10/2026, qui lève la lecture seule de la crate pour ce lot :
+Demandé par l'utilisateur le 28/10/2026 :
 la carte doit suivre la cellule de bitchat-console (zone = parent de la cellule de la console),
 avec toutes ses fonctions, et sa page doit permettre de changer de zone.
 
@@ -549,9 +549,9 @@ l'existence du proxy (choix : par requête et par une sonde au démarrage).
 | 27/10/2026 | — | D10 à D16 validées (Leaflet embarqué, deltas, descentes persistées, exposition locale par défaut, `--no-drop-dead` abandonné, menu au clic, échelle logarithmique). Spec corrigée (entrées du CLI). |
 | 27/10/2026 | 10 | Feature `server` (par défaut), binaire `bitchat-geohash` (page seule, `--listen`, arrêt sur Ctrl-C), `server::router()` et ressources embarquées (`include_bytes!`). Leaflet 1.9.4 depuis le registre npm, intégrité `sha512-nxS1ynzJ…FA74PA==` conforme ; SHA-256 `leaflet.js` `db49d009…f4e5641a`, `leaflet.css` `a7837102…4d147d04c6`. 96 tests (92 sans la feature) ; clippy propre dans les deux configurations. |
 | 27/10/2026 | 10 | `Cargo.lock` propre au dépôt (227 paquets), tiré du verrou du workspace pour garder les mêmes versions ; copie hors workspace : `cargo test --locked` 96 tests, 92 sans la feature, clippy et build release OK. |
-| 27/10/2026 | 11 | `ListenPlan::extend`, `Monitor::descend` / `watch_channels` / `relays` / `subscribe`, migration `0002_channel_origin`. Probe des nouveaux relais en tâche de fond plutôt qu'avant l'écoute (pas d'attente au clic). 108 tests (104 sans la feature), stables sur 3 lancements. **Boucle fermée** sur `wss://relay.famillevital.club` : `watch u09tv --depth 0`, `descend u09tv` (32 canaux ajoutés sur la connexion ouverte, sans reconnexion), kind 20000 publié par `nak` avec une clé jetable dans `u09tvw` → compté dans `u09tvw` seul. |
-| 27/10/2026 | — | Lot 11 commité (`730dd49`). Nouveau lot 11 bis : report des corrections de sélection de bitchat-envelope. D18 (liste iOS en conflit refusée, repli) et D19 (rejet des coordonnées hors bornes) validées. |
-| 27/10/2026 | 11 bis | Sélection des relais corrigée (une règle par app, plus d'ex æquo, `Selected.android: Vec<usize>`, union par serveur) ; D18 (liste iOS en conflit refusée, repli sur la dernière valide, au rechargement la liste courante est gardée) ; D19. Résultats identiques à `geohash_map` corrigé sur `u09tv`, `u0`, `9q8yy`, `gcpvj`, `u1`, `gb`, `9q` ; `9q8yy` passe de 10 à 8 serveurs. 117 tests (113 sans la feature), stables sur 3 lancements ; clippy propre dans les deux configurations. Listes officielles du jour : iOS identique à `tests/data/` (sans conflit) ; `watch u09tv` réel : 8 serveurs, un relais mis de côté (`dead`). |
+| 27/10/2026 | 11 | `ListenPlan::extend`, `Monitor::descend` / `watch_channels` / `relays` / `subscribe`, migration `0002_channel_origin`. Probe des nouveaux relais en tâche de fond plutôt qu'avant l'écoute (pas d'attente au clic). 108 tests (104 sans la feature), stables sur 3 lancements. **Boucle fermée** sur `$BITCHAT_TEST_RELAY` : `watch u09tv --depth 0`, `descend u09tv` (32 canaux ajoutés sur la connexion ouverte, sans reconnexion), kind 20000 publié par `nak` avec une clé jetable dans `u09tvw` → compté dans `u09tvw` seul. |
+| 27/10/2026 | — | Lot 11 commité (`730dd49`). Nouveau lot 11 bis : report des corrections de sélection du prototype. D18 (liste iOS en conflit refusée, repli) et D19 (rejet des coordonnées hors bornes) validées. |
+| 27/10/2026 | 11 bis | Sélection des relais corrigée (une règle par app, plus d'ex æquo, `Selected.android: Vec<usize>`, union par serveur) ; D18 (liste iOS en conflit refusée, repli sur la dernière valide, au rechargement la liste courante est gardée) ; D19. Résultats identiques à `geohash_map` (prototype) corrigé sur `u09tv`, `u0`, `9q8yy`, `gcpvj`, `u1`, `gb`, `9q` ; `9q8yy` passe de 10 à 8 serveurs. 117 tests (113 sans la feature), stables sur 3 lancements ; clippy propre dans les deux configurations. Listes officielles du jour : iOS identique à `tests/data/` (sans conflit) ; `watch u09tv` réel : 8 serveurs, un relais mis de côté (`dead`). |
 | 27/10/2026 | — | Lot 11 bis commité (`98a72e8`). |
 | 27/10/2026 | 12 | `server::model` : vues, `Push` (SSE), `Published` (deltas). D20 validée : tous les chiffres affichés, seuil *k* désactivé par défaut (`k_threshold` 3 → 0, gardé en option ; seuls les participants passent à `"low"` s'il est réglé) ; spec §5 et invariant 1 corrigés. 123 tests (114 sans la feature), stables sur 3 lancements ; clippy propre dans les deux configurations. |
 | 27/10/2026 | — | Lot 12 commité (`2bc7165`). |
@@ -569,15 +569,15 @@ l'existence du proxy (choix : par requête et par une sonde au démarrage).
 | 27/10/2026 | 16 | Calques relais (épingles par statut et plateforme, anneau, fenêtre, traits au survol) et mailles (niveaux 2 à 6, `meshes` dans `hello` et en delta, `Params.mesh_levels`, `Push::Hello.params` en `Box` pour clippy). Chrome headless sur `u09` profondeur 2 réel : 13 épingles, 8 traits au survol (6 tiretés : relais d'une seule app), mailles de niveau 4 (13 actives) et 3 (`#u09` : 72 canaux actifs, 222 présences), URL `&show=meshes&relays=1` relue, console propre. Défaut corrigé : infobulle écrasée au bord de la carte (largeur minimale). |
 | 27/10/2026 | 17 | Module `cli` partagé avec `watch`, binaire complet (options de la spec, résumé au démarrage, `--open`, `--verbose`, codes de sortie et messages). `tests/cli.rs` : binaire lancé sur une liste locale et un `TestRelay`, `GET /api/state`, arrêt propre sur SIGINT ; échecs (option inconnue, geohash invalide, plafond, port occupé, adresse non locale, pas de liste). 156 tests Rust (123 sans la feature), stables sur 3 lancements, `--locked` ; 10 tests `node` ; clippy propre. Essai réel `u09tv` : résumé (7 relais écoutés, 1 écarté), port occupé → message et code 1, Ctrl-C → arrêt propre. |
 | 27/10/2026 | — | Lots 16 (`ef893f1`) et 17 (`959b346`) commités. |
-| 28/10/2026 | 18 | **Boucle fermée** (`u09tv`, liste au seul `relay.famillevital.club`, kind 20000 de `nak` avec clé jetable dans `u09tvw`) : sur la page 1,8 s après le début de la publication, `u09tvw` seule modifiée, relais « delivered » ; ni pubkey, ni id, ni contenu dans l'état. **30 min sur `u09` profondeur 2** (listes officielles, 1 056 canaux, 12 relais écoutés, 1 écarté) : serveur 23 à 34 Mo (RSS) sans croissance ; onglet Chrome : tas JS 6 à 8,4 Mo, 1 024 rectangles, console propre ; flux SSE 7,2 Mo dont `hello` 1,47 Mo, puis ~200 Ko/min (1 604 messages : 473 `cells`, 465 `meshes`, 467 `status`, 198 `relays`) ; 974 canaux retirés après 15 min sans événement (journalisés), 4 relais déconnectés faute de canal surveillé ; 6 044 événements non comptés, presque tous des doublons entre relais. Capture du flux : aucune suite hexadécimale de plus de 10 caractères, aucune clé de champ personnelle. **HTTP/1.1** : au 6ᵉ-7ᵉ onglet, la page ne se charge plus du tout (le message prévu ne peut s'afficher) → D22, vérifié (5 onglets cachés « paused », 3 nouveaux en direct, l'onglet rendu visible reprend). **HTTPS** (certificat de test, Chrome dédié) : 8 onglets en direct, tout en `h2`, les 8 flux `/api/events` sur une seule connexion. 360 px : pas de défilement horizontal. Base SQLite : 136 Ko après 30 min. |
+| 28/10/2026 | 18 | **Boucle fermée** (`u09tv`, liste au seul `$BITCHAT_TEST_RELAY`, kind 20000 de `nak` avec clé jetable dans `u09tvw`) : sur la page 1,8 s après le début de la publication, `u09tvw` seule modifiée, relais « delivered » ; ni pubkey, ni id, ni contenu dans l'état. **30 min sur `u09` profondeur 2** (listes officielles, 1 056 canaux, 12 relais écoutés, 1 écarté) : serveur 23 à 34 Mo (RSS) sans croissance ; onglet Chrome : tas JS 6 à 8,4 Mo, 1 024 rectangles, console propre ; flux SSE 7,2 Mo dont `hello` 1,47 Mo, puis ~200 Ko/min (1 604 messages : 473 `cells`, 465 `meshes`, 467 `status`, 198 `relays`) ; 974 canaux retirés après 15 min sans événement (journalisés), 4 relais déconnectés faute de canal surveillé ; 6 044 événements non comptés, presque tous des doublons entre relais. Capture du flux : aucune suite hexadécimale de plus de 10 caractères, aucune clé de champ personnelle. **HTTP/1.1** : au 6ᵉ-7ᵉ onglet, la page ne se charge plus du tout (le message prévu ne peut s'afficher) → D22, vérifié (5 onglets cachés « paused », 3 nouveaux en direct, l'onglet rendu visible reprend). **HTTPS** (certificat de test, Chrome dédié) : 8 onglets en direct, tout en `h2`, les 8 flux `/api/events` sur une seule connexion. 360 px : pas de défilement horizontal. Base SQLite : 136 Ko après 30 min. |
 | 28/10/2026 | 18 | D22 validée. Safari essayé par l'utilisateur. `mkcert` installé par l'utilisateur ; certificat `localhost+2.pem` créé (ignoré par git) ; serveur en HTTPS : HTTP/2 et 200 sur `localhost` et `127.0.0.1`. Un serveur orphelin d'un essai raté de `tests/cli.rs` arrêté. |
-| 28/10/2026 | 17 | **Défaut corrigé** (signalé par l'utilisateur, lancement depuis `Nostr/` avec des chemins relatifs à la crate) : un certificat ou une clé introuvable n'était signalé qu'après les listes et les probes (8 s). Vérifié désormais avant tout, avec le dossier de départ des chemins relatifs ; test ajouté dans `tests/cli.rs`. |
+| 28/10/2026 | 17 | **Défaut corrigé** (signalé par l'utilisateur, lancement depuis le dossier parent avec des chemins relatifs à la crate) : un certificat ou une clé introuvable n'était signalé qu'après les listes et les probes (8 s). Vérifié désormais avant tout, avec le dossier de départ des chemins relatifs ; test ajouté dans `tests/cli.rs`. |
 | 28/10/2026 | 18 | **App réelle** (iOS 1.8.0 de l'utilisateur, carte en HTTPS `mkcert` sur `u09t`) : message dans `#u09tz` (niveau 5) → 1 message, 1 participant, livré par `nostr.wild-vibes.ts.net` et `relay-fra.zombi.cloudrodion.com` ; descente au clic dans `u09tz` ; message dans `#u09tzj` (niveau 6) → 1 message, 1 participant, livré par `nostr.wild-vibes.ts.net`. Aucune présence (utilisateur téléporté, conforme au comportement de l'app). 544 cellules de niveau 6 au total : la descente et des aperçus de survol (D21), temporaires. |
 | 28/10/2026 | 18 | `README.md` ajouté (présentation, lancement HTTP et HTTPS, usage de la carte), capture `docs/map.jpg` (300 Ko, carte réelle de `u09t` en HTTPS, colorée par participants, relais affichés). Lot 18 terminé. |
 | 28/10/2026 | — | Tag `v0.1.0` posé sur `961b88b` (version 0.1.0). |
-| 28/10/2026 | 19 | Changement de zone en direct (`POST /api/area`, champ « zone » de la page), D23 ; version 0.2.0. Demande de l'utilisateur pour bitchat-console (lecture seule levée pour ce lot). 159 tests Rust, 10 JS ; Chrome headless : `u09t` → `u09w` en 8,5 s depuis la console, retour par le champ. |
+| 28/10/2026 | 19 | Changement de zone en direct (`POST /api/area`, champ « zone » de la page), D23 ; version 0.2.0. Demande de l'utilisateur pour bitchat-console. 159 tests Rust, 10 JS ; Chrome headless : `u09t` → `u09w` en 8,5 s depuis la console, retour par le champ. |
 | 28/10/2026 | 20 | Listes de relais prises dans la base si chargées il y a moins de 24 h (demande de l'utilisateur), `--reload-lists`. 160 tests. Mesure réelle : le changement `u09t` → `u09w` reste à 8,1 s, presque tout le sondage d'un relais mort ; vérification à la demande de l'utilisateur : 75 relais pour toute la zone `u0` (1 089 canaux), 6 à 9 par cellule. |
 | 28/10/2026 | 20 | Sondages : verdicts récents repris, relais du canal de la zone d'abord, les autres en arrière-plan (D24) ; page : niveau des subdivisions après un changement de zone. 163 tests. Mesuré : démarrage 4 ms (listes et verdicts de la base), `u09t` → `u09w` 0,5 s, `spey` (jamais vue) 0,5 s. Version 0.2.1. |
-| 28/10/2026 | — | Workspace Cargo propre (`[workspace]` dans `Cargo.toml`, `/target` ignoré), comme bitchat-console et bitchat-launcher, à la demande de l’utilisateur (lecture seule levée) ; retiré des membres de `Nostr/Cargo.toml`. `Cargo.lock` de la crate à jour (il datait de la 0.1.0). Version 0.2.2. |
+| 28/10/2026 | — | Workspace Cargo propre (`[workspace]` dans `Cargo.toml`, `/target` ignoré), comme bitchat-console et bitchat-launcher, à la demande de l’utilisateur ; retiré du workspace local qui l’englobait. `Cargo.lock` de la crate à jour (il datait de la 0.1.0). Version 0.2.2. |
 | 29/10/2026 | 21 | Annuaire et sélection pris dans `geohash-relays` (DRY), à la demande de l'utilisateur ; dépendance `geohash` retirée, `tests/select.rs` supprimé (copie). 147 tests Rust (111 sans la feature), 10 JS ; clippy propre dans les deux configurations ; `reuse lint` conforme. Version 0.3.0. |
 | 29/10/2026 | 22 | Derrière un proxy TLS (D25, demande de l'utilisateur), sans nouvelle version. 155 tests Rust (111 sans la feature) ; clippy propre. Caddy 2.11.7 et NGINX 1.31.8 (certificat mkcert, `https://localhost:8443` et `:8444`) : sonde passée, page, commandes et flux SSE à travers les deux, HTTP/2 vers le client, accès direct au port refusé (`not_https_upstream`), mauvais nom refusé (421) ; fichier `cloudflared` validé (`ingress validate`). |

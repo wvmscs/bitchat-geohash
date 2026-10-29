@@ -15,3 +15,5 @@
 # mkcert output (real certificates, never committed; test ones are in tests/data/tls/)
 /*.pem
 /target
+# Rules of the author's local checkout (see AGENTS.md).
+/AGENTS.local.md

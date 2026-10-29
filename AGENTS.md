@@ -16,9 +16,9 @@ Step 3 adds a Swift UI through `uniffi`; the Swift package lives in `swift/`.
 ## Constraints
 
 ### Do NOT
-- Modify `bitchat-envelope`, `nip90-dvm`, the workspace `Nostr/Cargo.toml` or `src/`
-  (read-only); if a change there looks necessary, ask first. `geohash-relays`,
-  `bitchat-console`, `bitchat-launcher` and `bitchat-web` follow their own `AGENTS.md`.
+- Modify another repository from here: `geohash-relays`, `bitchat-console` and
+  `bitchat-launcher` follow their own `AGENTS.md`. Rules that only concern the author's local
+  checkout, if any, are in `AGENTS.local.md` (not committed).
 - Modify files without reading them first.
 - Modify existing tests, except to fix them or when an instruction in this file requires it
   (for example, extending the privacy tests when adding fields).
@@ -41,8 +41,7 @@ Step 3 adds a Swift UI through `uniffi`; the Swift package lives in `swift/`.
 
 ### Others
 - This crate is its own git repository (`origin` = `git@github.com:wvmscs/bitchat-geohash.git`,
-  branch `main`), its own Cargo workspace (`[workspace]` in `Cargo.toml`), inside the local
-  `Nostr/` directory, whose workspace does not list it.
+  branch `main`), its own Cargo workspace (`[workspace]` in `Cargo.toml`).
 - Pushing commits and tags to `origin` is authorized.
   Never force-push or rewrite pushed history without an explicit request.
 
@@ -256,12 +255,11 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
 - Relay coordinates come from IP geolocation: many relays share the same point, hence ties.
   iOS breaks ties by host, Android keeps CSV order. Android does not normalise: it can pick
   the same server twice (`host` and `host:443`), so `Selected.android` is a list of ranks.
-  Reference: `bitchat-envelope/Documents/relay-selection-corrections.md`.
+  Reference: geohash-relays' [relay-selection-corrections.md](https://github.com/wvmscs/geohash-relays/blob/strategies/docs/relay-selection-corrections.md).
 
 ## NIP-01 module and test helpers
 
-- The crate has no dependency on `bitchat-envelope`: `src/nostr.rs` holds the NIP-01 subset it
-  needs. It verifies (`k256` BIP-340 `verify_raw` over the 32-byte id) but never signs:
+- No Nostr library: `src/nostr.rs` holds the NIP-01 subset the crate needs. It verifies (`k256` BIP-340 `verify_raw` over the 32-byte id) but never signs:
   signing lives in the tests only.
 - `Event::verify()` checks the id against the content, then the signature;
   `Event::tag_value("g")` reads the first `g` tag. `Filter::tags` maps `'g'` to geohashes,
@@ -275,9 +273,8 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
 ## Real-network checks
 
 - Read-only observation (`watch`) is always fine. Never publish to public relays or real
-  channels without asking (no `geohash_bot` there).
-- Closed loop: a relay list with only `wss://relay.famillevital.club` (the user's own relay,
-  usable for tests), then a kind 20000 event published there with `nak event -k 20000
+  channels without asking (no bot there).
+- Closed loop: a relay list with only the user's own test relay (`$BITCHAT_TEST_RELAY`), then a kind 20000 event published there with `nak event -k 20000
   -t g=<geohash> --sec $(nak key generate)`: a throwaway key, never a real identity.
 - A real-app check needs the user: they can teleport their BitChat app to any geohash and post.
 

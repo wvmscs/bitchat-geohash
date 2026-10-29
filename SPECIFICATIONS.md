@@ -2,8 +2,8 @@
 
 ## Objectifs
 
-À partir du travail déjà effectué dans la crate `bitchat-envelope` (exemples `geohash_map` et
-`geohash_bot`, helpers `examples/common/{geo,probe}.rs`), implémenter un outil permettant de
+À partir du travail déjà effectué dans un prototype antérieur, non publié (exemples
+`geohash_map` et `geohash_bot`, fonctions `geo.rs` et `probe.rs`), implémenter un outil permettant de
 visualiser **en direct** la répartition de l'activité BitChat dans les canaux geohash d'une zone,
 sur une carte OpenStreetMap.
 
@@ -109,7 +109,7 @@ sur une carte OpenStreetMap.
 ### 4. Carte et interaction
 
 * Page Leaflet sur tuiles OSM (fournisseur configurable, attribution affichée), reprenant
-  `common/map_overlay.html`.
+  la page `map_overlay.html` du prototype.
 * Chaque cellule est un rectangle coloré selon une échelle (participants ou messages, au choix).
 * Mise à jour poussée en direct (WebSocket ou SSE), pas de rechargement.
 * **Survol** d'une cellule : affichage du modèle du §3.
@@ -120,7 +120,7 @@ sur une carte OpenStreetMap.
   pour un temps (5 min après le dernier survol), dessinés dans la cellule et résumés dans
   l'infobulle, sans rien enregistrer ; une descente les garde (D21 de `PLAN_ET2.md`). Comme
   les événements sont éphémères, l'aperçu ne montre que l'activité qui arrive pendant l'écoute.
-* Calque optionnel « relais » : position des relais, colorés par verdict, comme dans `geohash_map overlay`.
+* Calque optionnel « relais » : position des relais, colorés par verdict, comme dans le mode `overlay` de `geohash_map` (prototype).
 
 ### 5. Vie privée (non-objectifs)
 
@@ -135,8 +135,9 @@ sur une carte OpenStreetMap.
 ## Plan
 
 1. **Librairie Rust** (`bitchat-geohash`)
-   * Reprendre `geo.rs` et `probe.rs` de `bitchat-envelope/examples/common` par copie dans la
-     lib. La crate ne dépend pas de `bitchat-envelope` : le sous-ensemble NIP-01 utile
+   * Reprendre `geo.rs` et `probe.rs` du prototype par copie dans la lib (la sélection est
+     depuis dans [geohash-relays](https://github.com/wvmscs/geohash-relays)). La crate ne
+     dépend pas du prototype : le sous-ensemble NIP-01 utile
      (événement, vérification de signature, filtre) est dans `src/nostr.rs`.
    * Énumération (§1), plan d'écoute (§2), agrégation (§3).
    * Tests hors ligne : énumération, sélection et inversion des relais, agrégation avec
@@ -144,7 +145,7 @@ sur une carte OpenStreetMap.
 2. **Serveur web interne en Rust** (axum + tokio) : sert la page, pousse les mises à jour
    (§4). Un binaire CLI unique ; pas de Node.js.
 3. **Interface Swift** (macOS, iOS)
-   * Liaison via `uniffi`, à mutualiser avec la couche FFI prévue pour `bitchat-envelope`.
+   * Liaison via `uniffi`.
    * Première version : `WKWebView` sur la page de l'étape 2 ; MapKit natif ensuite si besoin.
    * iOS : écoute au premier plan seulement (pas de WebSockets en arrière-plan).
    * Le paquet Swift vit dans un sous-dossier `swift/`, séparé de la crate.
@@ -182,6 +183,6 @@ bitchat-geohash <geohash> [--depth N] [--levels 4,5,6] [--max-cells N] [--window
 * `u09` profondeur 2 (canaux 4c et 5c, 1 056 canaux) : plan d'écoute calculé en moins d'une
   seconde, une connexion par relais distinct vivant, plus une par tranche de 10 souscriptions
   au-delà de la première (un relais très chargé peut recevoir plusieurs connexions).
-* Un message envoyé par `geohash_bot` dans un canal observé apparaît sur la carte en moins de
+* Un message publié dans un canal observé (relais de test, clé jetable) apparaît sur la carte en moins de
   5 s, dans la bonne cellule et elle seule.
 * Aucune donnée personnelle (pubkey, nickname, contenu) dans les messages envoyés au navigateur.

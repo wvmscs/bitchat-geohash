@@ -1,8 +1,8 @@
 # Étape 1 : librairie Rust : plan de réalisation et avancement
 
 Référence : [SPECIFICATIONS.md](SPECIFICATIONS.md), §1 à §3 bis et §5.
-Règle : seuls les fichiers de `bitchat-geohash/` sont modifiés. Depuis la fin de l'étape 1, la
-crate ne dépend plus de `bitchat-envelope` (voir le journal).
+Depuis la fin de l'étape 1, la crate ne dépend plus du prototype antérieur, non publié, dont
+elle est issue (voir le journal).
 
 **Légende** : ⬜ à faire · 🟨 en cours · ✅ fait · ⏸ en attente d'une décision
 
@@ -31,12 +31,12 @@ src/
   lib.rs         ré-exports, constantes du protocole (kinds 20000/20001, GEO_RELAY_COUNT = 5)
   error.rs       Error (thiserror)
   directory.rs   RelayDirectory : CSV analysé une seule fois, Platform { Ios, Android }, source
-  select.rs      closest(), select_both() → Vec<Selected>        (repris de examples/common/geo.rs)
+  select.rs      closest(), select_both() → Vec<Selected>        (repris de geo.rs du prototype)
   channels.rs    Level, enumerate(start, depth, levels, max) → Vec<String>
   plan.rs        ListenPlan : relais → [canaux], filtres, retrait/réintégration, diff entre deux plans
   store/         Store (rusqlite) : connexion, migrations, requêtes
     migrations/  0001_init.sql, 0002_….sql (embarquées par include_str!)
-  probe.rs       probe() → Verdict { status: Status, text }    (repris de examples/common/probe.rs)
+  probe.rs       probe() → Verdict { status: Status, text }    (repris de probe.rs du prototype)
   aggregate.rs   Aggregator : déduplication, fenêtre glissante, inactivité, CellStats
   listener.rs    une tâche par relais, Observation envoyées par mpsc, application des diffs de plan
   monitor.rs     Monitor : assemble le tout, API reinstate(), rechargement 24 h
@@ -57,11 +57,11 @@ des listes → nouveau plan → diff.
 
 ### Lot 0 : mise en place de la crate ✅
 
-- [x] `Cargo.toml` : `bitchat-envelope` (chemin ; remplacé depuis par `k256`, voir le journal), `geohash 0.13`, `tokio`, `tokio-tungstenite`
+- [x] `Cargo.toml` : le prototype (chemin ; remplacé depuis par `k256`, voir le journal), `geohash 0.13`, `tokio`, `tokio-tungstenite`
       (rustls, racines webpki), `rustls` (ring), `futures-util`, `serde`, `serde_json`,
       `thiserror`, `tracing`, `rusqlite` (feature `bundled`), `reqwest` (rustls, pour D5),
-      `sha2` (empreintes des listes) ; en dev : `bitchat-envelope` avec
-      la feature `mock-ws`, `tracing-subscriber`.
+      `sha2` (empreintes des listes) ; en dev : le prototype avec
+      sa feature `mock-ws`, `tracing-subscriber`.
 - [x] Remplacer le `add()` généré par les modules vides et `error.rs`.
 - [x] Déplacer le paquet Swift (`Package.swift`, `Sources/`, `Tests/`, `.gitignore`) dans
       `swift/`, comme prévu par la spec.
@@ -85,7 +85,7 @@ Fini quand : `cargo build -p bitchat-geohash` et `cargo test -p bitchat-geohash`
 - [x] Le CSV est analysé une seule fois, pas à chaque canal.
 - [x] Geohash invalide → `Error::InvalidGeohash` (au lieu d'une liste vide dans `geo.rs`).
 
-Tests (CSV figés, `tests/select.rs`, 11 tests) : résultats identiques à `geohash_map` sur
+Tests (CSV figés, `tests/select.rs`, 11 tests) : résultats identiques à `geohash_map` (prototype) sur
 `u09tv`, `u09`, `9q8yy`, `gcpvj`, `u0`, égalités au 5ᵉ rang, liste absente pour une plateforme, CSV vide ou corrompu.
 
 ### Lot 2 : énumération des canaux ✅
@@ -242,8 +242,8 @@ démarrage ; aucune liste → erreur ; canaux retirés conservés après changem
       `--duration`, `--verbose`.
 - [x] Commandes sur l'entrée standard : `reinstate <geohash>…`, `reinstate all`, `status`, `quit`.
 - [x] Validation : un message dans un canal observé apparaît en moins de 5 s, dans la bonne
-      cellule et elle seule (critère de la spec). Fait sans `geohash_bot` (qui publierait sur des
-      canaux publics) : boucle fermée sur `wss://relay.famillevital.club` avec `nak` et une clé
+      cellule et elle seule (critère de la spec). Fait sans le bot du prototype (qui publierait sur des
+      canaux publics) : boucle fermée sur `$BITCHAT_TEST_RELAY` avec `nak` et une clé
       jetable (< 1 s), puis message de l'app BitChat de l'utilisateur dans `u09tv`.
 - [x] Mesures notées dans le journal : nombre de relais vivants, d'événements par minute,
       nombre de canaux retirés après 5 et 15 min, mémoire, taille de la base.
@@ -268,7 +268,7 @@ Fini quand : critères d'acceptation de la spec vérifiés, sauf ceux qui concer
 
 - **Limites des relais non documentées** (taille de filtre, nombre de REQ, débit) : les valeurs
   de D3 sont des hypothèses, à mesurer au lot 9.
-- **Peu de trafic réel** : les canaux sont souvent vides ; la validation passe par `geohash_bot`.
+- **Peu de trafic réel** : les canaux sont souvent vides ; la validation passe par une publication sur le relais de test.
 - **Retrait rapide des canaux** : la plupart des canaux sont muets, donc la plupart seront
   retirés au bout du délai (15 min par défaut depuis D8) ; une activité qui démarre ensuite dans un canal retiré n'est pas
   vue tant qu'il n'est pas réintégré. Comportement voulu. Mesuré au lot 9 sur `u09`
@@ -282,15 +282,15 @@ Fini quand : critères d'acceptation de la spec vérifiés, sauf ceux qui concer
 | 26/10/2026 | — | Ajouts : retrait des canaux inactifs (5 min) et réintégration explicite, CSV figés en test et rechargés toutes les 24 h, persistance SQLite avec migrations versionnées. D1 à D4 validées. Nouveaux lots 4 (SQLite) et 8 (rechargement), lots renumérotés. |
 | 26/10/2026 | — | D5 et D6 validées. `AGENTS.md` créé. |
 | 26/10/2026 | 0 | Crate en place : dépendances (reqwest 0.13 sans fournisseur crypto embarqué, ring installé au démarrage, cf. lot 8), modules vides, `Error`, constantes, paquet Swift dans `swift/` (`swift build` OK), CSV figés. fmt, tests, clippy `-D warnings` : OK. |
-| 26/10/2026 | 1 | `directory.rs` et `select.rs` ; sorties identiques à `geohash_map --no-probe` sur 5 canaux (dont égalités iOS et Android). Listes figées : iOS 326 relais (115 doublons), Android 332 (49 doublons), 0 ligne rejetée. Erreur WebSocket mise en `Box` (clippy `result_large_err`). |
+| 26/10/2026 | 1 | `directory.rs` et `select.rs` ; sorties identiques à `geohash_map --no-probe` (prototype) sur 5 canaux (dont égalités iOS et Android). Listes figées : iOS 326 relais (115 doublons), Android 332 (49 doublons), 0 ligne rejetée. Erreur WebSocket mise en `Box` (clippy `result_large_err`). |
 | 26/10/2026 | 2 | `channels.rs` : `Level`, `normalize`, `count`, `enumerate`, `children`. La profondeur compte les niveaux de canal de l'app, observés ou non (depuis `u0`, profondeur 1 = précision 4) ; le filtre `levels` s'applique ensuite. Ordre : niveau le plus grossier d'abord, ordre geohash dans un niveau. |
 | 26/10/2026 | 3 | `plan.rs` : `ListenPlan`, `Subscription`, `PlanDiff`. `u09` profondeur 2 : 1 056 canaux → 14 relais, plan en 130 ms (release). API publique sans durée de vie explicite (règle FFI d'AGENTS.md). D7 validée, critère de la spec corrigé. |
 | 26/10/2026 | 4 | `store/` : `Store`, `StoreWriter`, migrations (`PRAGMA user_version`), `0001_init.sql`. Les heures sont toujours fournies par l'appelant (horloge injectée). La colonne du CSV s'appelle `csv` pour que le test de vie privée puisse interdire `content`. |
 | 26/10/2026 | 5 | `probe.rs` repris avec `Status`, `probe_relays` (un probe par relais du plan) et l'enregistrement en base. Serveurs de test réutilisables (`tests/common/`) pour le lot 7. |
 | 26/10/2026 | 6 | `aggregate.rs` : `Aggregator`, `CellStats`, `MeshStats`, `Rejection`. Aucune pubkey dans ce qui sort (test sur la sortie `Debug`). Lots 4, 5 et 6 commités séparément. |
-| 26/10/2026 | 7 | `listener.rs` et `monitor.rs`. `MockRelay` ne stocke pas les kinds éphémères : les tests publient après la connexion. 80 tests au total, stables sur 3 lancements. Ressources du lot 9 notées : relais `wss://relay.famillevital.club`, pubkey via `nak decode hiha@famillevital.club`, app BitChat avec téléportation. |
+| 26/10/2026 | 7 | `listener.rs` et `monitor.rs`. `MockRelay` ne stocke pas les kinds éphémères : les tests publient après la connexion. 80 tests au total, stables sur 3 lancements. Ressources du lot 9 notées : relais de test de l'utilisateur (`$BITCHAT_TEST_RELAY`), sa pubkey, app BitChat avec téléportation. |
 | 26/10/2026 | 8 | Sources et rechargement dans `directory.rs` et `monitor.rs`. Helpers de test regroupés dans `tests/common/`. Vérification manuelle unique en HTTPS réel : iOS 326 relais (identique à la copie figée), Android 324 (332 dans la copie figée : la liste amont change chaque jour). 88 tests. |
-| 26/10/2026 | 9 | Exemple `watch`. **Boucle fermée** sur `wss://relay.famillevital.club` (liste à ce seul relais, kind 20000 publié par `nak` avec une clé jetable dans `u09tvw`) : affiché en moins d'1 s, bonne cellule, « low » (seuil *k*). Premier essai : relais en `502 Bad Gateway`, classé `down` et retenté comme prévu ; relancé par l'utilisateur. **Message de l'app BitChat** (utilisateur, `u09tv`, 21:50:25 UTC) : compté dans `u09tv` seul (pas dans le parent `u09t`) ; horodatage de l'événement ~21:50:35. |
+| 26/10/2026 | 9 | Exemple `watch`. **Boucle fermée** sur `$BITCHAT_TEST_RELAY` (liste à ce seul relais, kind 20000 publié par `nak` avec une clé jetable dans `u09tvw`) : affiché en moins d'1 s, bonne cellule, « low » (seuil *k*). Premier essai : relais en `502 Bad Gateway`, classé `down` et retenté comme prévu ; relancé par l'utilisateur. **Message de l'app BitChat** (utilisateur, `u09tv`, 21:50:25 UTC) : compté dans `u09tv` seul (pas dans le parent `u09t`) ; horodatage de l'événement ~21:50:35. |
 | 26/10/2026 | 9 | **Réseau public, `u09` profondeur 2, 16 min en lecture seule** : listes officielles (iOS 326, Android 324 relais) ; 1 056 canaux, 13 relais, 12 écoutés, 1 écarté (`relay.cypherflow.ai`, certificat `UnknownIssuer`), 2 injoignables retentés (`treuzkas.branruz.com` HTTP 302, `relay.sovereignresonance.org` délai) ; 23 connexions, 20 ouvertes ; démarrage 9 s (dont 8 s de délai de probe). Les 1 056 canaux ont des relais choisis par une seule app. Événements uniques : 1 929 présences et 7 messages (~120/min), chacun reçu ~7 fois (12 510 doublons) ; 192 hors fenêtre (rattrapage `since` 1 h). Retirés : 954 à 5 min, 1 019 à 15 min, 36 encore surveillés à la fin (Paris : `u09t` 141 participants, `u09tv` 25). Mémoire 16–27 Mo (RSS), base 127 Ko. Seuls 4 relais sur 12 livrent l'activité d'une cellule. |
 | 26/10/2026 | — | D8 : délai de retrait par défaut porté de 5 à 15 min (code, spec, AGENTS, `watch`) ; tests calés sur la valeur par défaut. |
-| 26/10/2026 | — | Dépôt dédié `wvmscs/bitchat-geohash` (privé, GPL-3.0-only). Dépendance à `../bitchat-envelope` supprimée : `src/nostr.rs` (événement, vérification Schnorr via `k256`, filtre, `unix_now`) et, pour les tests, un relais NIP-01 intégré et des clés déterministes (`tests/common/relay.rs`). Le dépôt compile et ses tests passent seul, hors du workspace. 92 tests. |
+| 26/10/2026 | — | Dépôt dédié `wvmscs/bitchat-geohash` (GPL-3.0-only à l'époque). Dépendance au prototype supprimée : `src/nostr.rs` (événement, vérification Schnorr via `k256`, filtre, `unix_now`) et, pour les tests, un relais NIP-01 intégré et des clés déterministes (`tests/common/relay.rs`). Le dépôt compile et ses tests passent seul. 92 tests. |

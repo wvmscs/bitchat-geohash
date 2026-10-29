@@ -9,8 +9,7 @@ description = "Live monitor of BitChat location channels (geohash): channel enum
 license = "GPL-3.0-or-later"
 repository = "https://github.com/wvmscs/bitchat-geohash"
 
-# Own workspace: the crate builds on its own, also inside the local `Nostr/`
-# directory, whose workspace does not list it.
+# Own workspace: the crate builds on its own, also inside another workspace.
 [workspace]
 
 [dependencies]

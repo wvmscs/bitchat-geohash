@@ -28,7 +28,7 @@
 ## [0.2.2] - 2026-10-28
 
 ### Changed
-- Own Cargo workspace (`[workspace]` in `Cargo.toml`), like bitchat-console and bitchat-launcher: the crate builds the same anywhere, with its own `Cargo.lock` (it was out of date: built inside the local `Nostr/` workspace, it used that one) and its own `target/`.
+- Own Cargo workspace (`[workspace]` in `Cargo.toml`), like bitchat-console and bitchat-launcher: the crate builds the same anywhere, with its own `Cargo.lock` (it was out of date: built inside an enclosing workspace, it used that one) and its own `target/`.
 
 ## [0.2.1] - 2026-10-28
 
@@ -54,7 +54,7 @@ First version: the library (step 1) and the live map server with its `bitchat-ge
 - Map page over HTTP/1.1: a hidden tab lets go of its live stream after 10 s and takes it back when shown (D22). Each open stream holds one of the browser's 6 connections per host, and past them a new tab could not even load the page. HTTPS (HTTP/2) carries every stream on one connection.
 - Map tiles blocked by OpenStreetMap under Firefox (403 "Access blocked"): the tile requests now carry the page origin as `Referer` (Leaflet `referrerPolicy`), as the OSM tile policy requires; the rest of the page keeps `no-referrer`.
 - Map page: cells without colour can be hovered and clicked inside (transparent fill; an unfilled SVG shape only reacts on its outline).
-- Relay choice: each app's own rule (step 2, lot 11 bis, from bitchat-envelope's relay selection corrections). iOS keeps one entry per normalised host (first coordinates) and takes exactly 5 by (distance, host); Android keeps raw lines (`host` and `host:443` are two entries) and takes exactly 5 by distance, stable, so it can pick a server twice. No more ties beyond the 5th slot.
+- Relay choice: each app's own rule (step 2, lot 11 bis, from the relay selection corrections, geohash-relays' [relay-selection-corrections.md](https://github.com/wvmscs/geohash-relays/blob/strategies/docs/relay-selection-corrections.md)). iOS keeps one entry per normalised host (first coordinates) and takes exactly 5 by (distance, host); Android keeps raw lines (`host` and `host:443` are two entries) and takes exactly 5 by distance, stable, so it can pick a server twice. No more ties beyond the 5th slot.
 
 ### Changed
 - `Push::Hello.params` is boxed (same JSON).
@@ -93,7 +93,7 @@ First version: the library (step 1) and the live map server with its `bitchat-ge
 
 ### Changed
 - `Cargo.lock` committed: standalone builds are reproducible (same versions as the local workspace).
-- No dependency on `bitchat-envelope` any more: `nostr` module (NIP-01 event, Schnorr verification with `k256`, filter, `unix_now`); tests use an integrated NIP-01 relay (`tests/common/relay.rs`). The crate builds on its own.
+- No dependency on the earlier prototype any more: `nostr` module (NIP-01 event, Schnorr verification with `k256`, filter, `unix_now`); tests use an integrated NIP-01 relay (`tests/common/relay.rs`). The crate builds on its own.
 - License: GPL-3.0-only (the repository's `LICENSE`).
 - Default inactivity delay before a channel is retired: 15 min (was 5 min).
 - `normalize_url` keeps an explicit `ws://` (local test relays).
