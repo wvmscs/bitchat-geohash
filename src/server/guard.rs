@@ -3,12 +3,13 @@
 
 //! Request checks and security headers (D13): `Host` (DNS rebinding),
 //! `Origin` and `Content-Type` of commands, CSP. With TLS, the names
-//! accepted are those of the certificate (D17).
+//! accepted are those of the certificate (D17); behind a proxy, the public
+//! name, and only from the proxy's address in HTTPS upstream (D25).
 
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use axum::extract::{Request, State};
+use axum::extract::{ConnectInfo, Request, State};
 use axum::http::{HeaderValue, Method, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
@@ -16,6 +17,15 @@ use axum::response::{IntoResponse, Response};
 use rustls_pki_types::CertificateDer;
 
 use super::api::ApiError;
+use super::proxy::{self, Net, Public};
+
+/// Behind a proxy (D25).
+pub(crate) struct Behind {
+    pub(crate) public: Public,
+    pub(crate) from: Vec<Net>,
+    /// Answered at [`proxy::CHECK_PATH`].
+    pub(crate) token: String,
+}
 
 pub(crate) struct Guard {
     /// Without TLS, the accepted `Host` values; `None` accepts any
@@ -25,6 +35,7 @@ pub(crate) struct Guard {
     /// certificate covers its name and the port is the server's.
     leaf: Option<CertificateDer<'static>>,
     port: u16,
+    behind: Option<Behind>,
     csp: HeaderValue,
 }
 
@@ -33,22 +44,32 @@ impl Guard {
         addr: SocketAddr,
         tiles: &str,
         leaf: Option<CertificateDer<'static>>,
+        behind: Option<Behind>,
     ) -> Self {
         Guard {
             hosts: allowed_hosts(addr),
             leaf,
             port: addr.port(),
+            behind,
             csp: HeaderValue::from_str(&csp(tiles))
                 .unwrap_or_else(|_| HeaderValue::from_static("default-src 'self'")),
         }
     }
 
-    fn scheme(&self) -> &'static str {
-        if self.leaf.is_some() { "https" } else { "http" }
+    /// The `Origin` of the server's own page for `host`.
+    fn origin(&self, host: &str) -> String {
+        match (&self.behind, &self.leaf) {
+            (Some(b), _) => b.public.origin.clone(),
+            (None, Some(_)) => format!("https://{host}"),
+            (None, None) => format!("http://{host}"),
+        }
     }
 
     fn host_ok(&self, host: Option<&str>) -> bool {
         let Some(host) = host else { return false };
+        if let Some(b) = &self.behind {
+            return b.public.host_ok(host);
+        }
         match &self.leaf {
             Some(leaf) => {
                 let (name, port) = split_host(host);
@@ -122,8 +143,33 @@ pub(crate) async fn guard(State(g): State<Arc<Guard>>, req: Request, next: Next)
         .and_then(|h| h.to_str().ok())
         .map(str::to_owned)
         .or_else(|| req.uri().authority().map(|a| a.to_string()));
+    if let Some(b) = &g.behind {
+        let peer = req
+            .extensions()
+            .get::<ConnectInfo<SocketAddr>>()
+            .map(|c| c.0.ip());
+        if !peer.is_some_and(|ip| b.from.iter().any(|n| n.contains(ip))) {
+            return refuse(&req, StatusCode::FORBIDDEN, "not_from_proxy");
+        }
+        if !proxy::forwarded_https(req.headers()) {
+            return refuse(&req, StatusCode::FORBIDDEN, "not_https_upstream");
+        }
+        let forwarded_host = req
+            .headers()
+            .get("x-forwarded-host")
+            .map(|h| h.to_str().unwrap_or_default());
+        if forwarded_host.is_some_and(|h| !b.public.host_ok(h)) {
+            return refuse(&req, StatusCode::MISDIRECTED_REQUEST, "wrong_host");
+        }
+    }
     if !g.host_ok(host.as_deref()) {
         return refuse(&req, StatusCode::MISDIRECTED_REQUEST, "wrong_host");
+    }
+    if let Some(b) = &g.behind
+        && req.method() == Method::GET
+        && req.uri().path() == proxy::CHECK_PATH
+    {
+        return b.token.clone().into_response();
     }
     if req.method() == Method::POST {
         let json = req
@@ -140,7 +186,7 @@ pub(crate) async fn guard(State(g): State<Arc<Guard>>, req: Request, next: Next)
             .headers()
             .get(header::ORIGIN)
             .and_then(|v| v.to_str().ok());
-        let expected = host.as_deref().map(|h| format!("{}://{h}", g.scheme()));
+        let expected = host.as_deref().map(|h| g.origin(h));
         if origin.is_none() || origin.map(str::to_owned) != expected {
             return refuse(&req, StatusCode::FORBIDDEN, "wrong_origin");
         }

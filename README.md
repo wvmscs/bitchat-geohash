@@ -25,6 +25,11 @@ mkcert -install && mkcert localhost 127.0.0.1 ::1
 cargo run --release -- u09 --tls-cert localhost+2.pem --tls-key localhost+2-key.pem --open
 ```
 
+To serve it on a public name, a TLS proxy in front (Cloudflare Tunnel, NGINX, Caddy) is
+enough: `--behind-proxy https://map.example.org`. The map then accepts only what comes
+through the proxy in HTTPS, and checks at start that the name leads to it; the configurations
+are in [docs/behind-proxy.md](docs/behind-proxy.md).
+
 On the map:
 
 - Hover a cell for its counts and relays; hovering a while also previews the level below.
@@ -45,6 +50,8 @@ cargo run --example watch -- u09 --depth 2
 - [SPECIFICATIONS.md](SPECIFICATIONS.md): what it does and why (in French).
 - [PLAN_ET1.md](PLAN_ET1.md), [PLAN_ET2.md](PLAN_ET2.md): progress, decisions and
   measurements (in French).
+- [docs/behind-proxy.md](docs/behind-proxy.md): behind a TLS proxy (Cloudflare Tunnel, NGINX,
+  Caddy).
 - [AGENTS.md](AGENTS.md): layout, invariants and commands for contributors.
 - [CHANGELOG.md](CHANGELOG.md).
 

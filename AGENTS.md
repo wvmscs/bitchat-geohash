@@ -160,7 +160,7 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
   Leaflet). `view.js` holds the page's pure helpers (no DOM), tested with node.
   `model.rs`: the JSON views sent to the browser, SSE messages and deltas; `api.rs`: `/api/*`
   routes and the SSE stream; `guard.rs`: `Host`/`Origin`/`Content-Type` checks and security
-  headers; `tls.rs`: optional TLS (certificate and key files, ALPN `h2`/`http/1.1`);
+  headers; `proxy.rs`: behind a TLS proxy (checks, start probe); `tls.rs`: optional TLS (certificate and key files, ALPN `h2`/`http/1.1`);
   `mod.rs`: `serve`, `Server`, the task that pushes the deltas.
 - `src/main.rs`: the `bitchat-geohash` binary (`required-features = ["server"]`): server
   options, start-up summary, `map: <url>` on stderr (read by `tests/cli.rs`), exit codes 2
@@ -211,7 +211,9 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
   `mkcert localhost 127.0.0.1 ::1` (gives `localhost+2.pem` and `localhost+2-key.pem`), and pass
   them with `--tls-cert` / `--tls-key`. HTTP/2 then carries every SSE stream of the browser on
   one connection (HTTP/1.1 allows 6 per host). Never commit these files. A non-local address
-  needs `--allow-remote` and TLS, or `--insecure-remote`.
+  needs `--allow-remote` and TLS, or `--insecure-remote`, or a TLS proxy in front
+  (`--behind-proxy`, D25, `docs/behind-proxy.md`): then only the proxy's addresses, with
+  HTTPS upstream and the public name, are served.
 - A hidden tab closes its SSE stream after 10 s and reopens it when shown (D22): over
   HTTP/1.1 open streams would otherwise use up the 6 connections per host, and a new tab
   could not load at all. Keep it when touching `connect()`.

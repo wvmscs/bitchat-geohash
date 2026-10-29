@@ -11,7 +11,9 @@ use std::time::Duration;
 
 use bitchat_geohash::monitor::{Monitor, MonitorConfig};
 use bitchat_geohash::nostr::Event;
-use bitchat_geohash::server::{Asset, Relaunch, Server, ServerConfig, router, serve, serve_with};
+use bitchat_geohash::server::{
+    Asset, Net, ProxyConfig, Relaunch, Server, ServerConfig, TlsFiles, router, serve, serve_with,
+};
 use bitchat_geohash::store::Store;
 use bitchat_geohash::{Error, KIND_GEO_MESSAGE};
 use common::*;
@@ -580,4 +582,167 @@ async fn a_fixed_area_says_so() {
     let (status, body) = r.post("/api/area", r#"{"geohash":"u09w"}"#).await;
     assert_eq!((status, &body["error"]), (409, &json!("area_fixed")));
     r.stop().await;
+}
+
+// --- Lot 22: behind a TLS proxy (D25) ---
+
+const PUBLIC: &str = "https://map.example.org";
+
+fn behind(check: bool) -> ProxyConfig {
+    ProxyConfig {
+        check,
+        ..ProxyConfig::new(PUBLIC).unwrap()
+    }
+}
+
+#[tokio::test]
+async fn behind_a_proxy_only_what_comes_through_it_in_https() {
+    let r = Running::start(|_, s| s.proxy = Some(behind(false))).await;
+    assert_eq!(r.server.public_url(), Some(PUBLIC));
+    let get = |path: &str| r.http.get(r.url(path));
+    let error = |resp: reqwest::Response| async move {
+        let status = resp.status().as_u16();
+        let body: Value = serde_json::from_str(&resp.text().await.unwrap()).unwrap();
+        (status, body["error"].as_str().unwrap().to_owned())
+    };
+    // Straight to the port, as before: refused.
+    assert_eq!(
+        error(get("/api/state").send().await.unwrap()).await,
+        (403, "not_https_upstream".into())
+    );
+    // From the proxy, in HTTPS, for the public name.
+    let proxied = |path: &str| {
+        get(path)
+            .header("host", "map.example.org")
+            .header("x-forwarded-proto", "https")
+    };
+    assert_eq!(proxied("/api/state").send().await.unwrap().status(), 200);
+    let cf = get("/api/state")
+        .header("host", "map.example.org")
+        .header("cf-visitor", r#"{"scheme":"https"}"#)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(cf.status(), 200);
+    // The proxy reached in clear HTTP says so.
+    let clear = get("/api/state")
+        .header("host", "map.example.org")
+        .header("x-forwarded-proto", "http")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(error(clear).await, (403, "not_https_upstream".into()));
+    // Another name, or the local address, through the proxy.
+    let local = get("/api/state")
+        .header("x-forwarded-proto", "https")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(error(local).await, (421, "wrong_host".into()));
+    let forwarded = proxied("/api/state")
+        .header("x-forwarded-host", "evil.example")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(error(forwarded).await, (421, "wrong_host".into()));
+    // The probe's path answers a token.
+    let token = proxied("/.well-known/bitchat-proxy-check")
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    assert_eq!(token.len(), 32);
+    // Commands carry the public origin.
+    let descend = |origin: &str| {
+        r.http
+            .post(r.url("/api/descend"))
+            .header("host", "map.example.org")
+            .header("x-forwarded-proto", "https")
+            .header("content-type", "application/json")
+            .header("origin", origin)
+            .body(r#"{"geohash":"u09tv"}"#)
+    };
+    assert_eq!(descend(&r.server.url()).send().await.unwrap().status(), 403);
+    assert_eq!(descend(PUBLIC).send().await.unwrap().status(), 200);
+    r.stop().await;
+}
+
+#[tokio::test]
+async fn behind_a_proxy_other_addresses_are_refused() {
+    let r = Running::start(|_, s| {
+        s.proxy = Some(ProxyConfig {
+            from: vec![Net::parse("10.0.0.0/8").unwrap()],
+            ..behind(false)
+        })
+    })
+    .await;
+    let resp = r
+        .http
+        .get(r.url("/api/state"))
+        .header("host", "map.example.org")
+        .header("x-forwarded-proto", "https")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 403);
+    assert!(resp.text().await.unwrap().contains("not_from_proxy"));
+    r.stop().await;
+}
+
+/// A monitor on a dead relay, for the start checks.
+async fn idle_monitor() -> (Monitor, MonitorConfig) {
+    let clock = TestClock::new();
+    let config = config("u09t", &clock);
+    let monitor = Monitor::start(
+        config.clone(),
+        Some(directory_of(&["ws://127.0.0.1:1".into()])),
+        None,
+        Store::open_in_memory().unwrap(),
+    )
+    .await
+    .unwrap();
+    (monitor, config)
+}
+
+#[tokio::test]
+async fn behind_a_proxy_the_start_checks() {
+    bitchat_geohash::install_crypto_provider();
+    // No proxy at the public name: the probe fails, nothing is served.
+    let (monitor, config) = idle_monitor().await;
+    let server = ServerConfig {
+        listen: "127.0.0.1:0".parse().unwrap(),
+        proxy: Some(ProxyConfig::new("https://127.0.0.1:9").unwrap()),
+        ..ServerConfig::default()
+    };
+    match serve(monitor, &config, server).await {
+        Err(Error::Proxy(why)) => assert!(why.contains("--no-proxy-check"), "{why}"),
+        other => panic!("probe passed: {:?}", other.err()),
+    }
+    // TLS is the proxy's.
+    let (monitor, config) = idle_monitor().await;
+    let server = ServerConfig {
+        listen: "127.0.0.1:0".parse().unwrap(),
+        proxy: Some(behind(false)),
+        tls: Some(TlsFiles {
+            cert: "c.pem".into(),
+            key: "k.pem".into(),
+        }),
+        ..ServerConfig::default()
+    };
+    assert!(matches!(
+        serve(monitor, &config, server).await,
+        Err(Error::Proxy(_))
+    ));
+    // A proxy on another machine: a remote address without TLS here.
+    let (monitor, config) = idle_monitor().await;
+    let server = ServerConfig {
+        listen: "0.0.0.0:0".parse().unwrap(),
+        allow_remote: true,
+        proxy: Some(behind(false)),
+        ..ServerConfig::default()
+    };
+    let server = serve(monitor, &config, server).await.unwrap();
+    drop(server.shutdown().await.unwrap().shutdown().await.unwrap());
 }

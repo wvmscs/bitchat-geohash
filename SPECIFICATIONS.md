@@ -156,7 +156,8 @@ bitchat-geohash <geohash> [--depth N] [--levels 4,5,6] [--max-cells N] [--window
     [--inactivity 15m] [--relays-csv online_relays_gps.csv]
     [--android-csv nostr_relays.csv | --no-android] [--no-probe] [--db <fichier>]
     [--reinstate-all] [--forget-descents] [--listen 127.0.0.1:8080] [--allow-remote]
-    [--tls-cert <pem> --tls-key <pem> | --insecure-remote]
+    [--tls-cert <pem> --tls-key <pem> | --insecure-remote |
+     --behind-proxy https://<nom> [--proxy-from 127.0.0.1/8,::1] [--no-proxy-check]]
     [--tiles <url> --tiles-attribution <html>] [--open] [--verbose]
 ```
 
@@ -167,6 +168,13 @@ bitchat-geohash <geohash> [--depth N] [--levels 4,5,6] [--max-cells N] [--window
 * Les relais morts sont toujours écartés, jamais remplacés : pas d'option pour les garder.
 * Écoute locale (`127.0.0.1`) par défaut ; une autre adresse exige `--allow-remote` et TLS
   (`--insecure-remote` pour s'en passer, avec avertissement). TLS permet HTTP/2.
+* Derrière un proxy TLS (D25, `--behind-proxy https://<nom>`) : HTTP clair vers le proxy
+  seulement. Chaque requête doit venir d'une adresse de `--proxy-from` (par défaut la boucle
+  locale), dire qu'elle est arrivée en HTTPS (`X-Forwarded-Proto`, `Forwarded` ou `CF-Visitor`)
+  et porter le nom public (`Host`, `Origin` des commandes). Au démarrage, une sonde demande
+  `https://<nom>/.well-known/bitchat-proxy-check` et attend le jeton tiré à ce démarrage ;
+  sinon la carte ne démarre pas (`--no-proxy-check` pour s'en passer). Pas de `--allow-remote`
+  sans TLS ici ni proxy. Configurations : [docs/behind-proxy.md](docs/behind-proxy.md).
 * Détail des options et décisions : [PLAN_ET2.md](PLAN_ET2.md).
 
 ## Critères d'acceptation

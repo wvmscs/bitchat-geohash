@@ -15,6 +15,7 @@ mod area;
 mod assets;
 mod guard;
 pub mod model;
+mod proxy;
 mod tls;
 
 use std::net::SocketAddr;
@@ -32,6 +33,7 @@ use tokio::task::JoinHandle;
 
 pub use area::Relaunch;
 pub use assets::Asset;
+pub use proxy::{Net, ProxyConfig};
 pub use tls::TlsFiles;
 
 use crate::error::{Error, Result};
@@ -77,6 +79,8 @@ pub struct ServerConfig {
     pub tls: Option<TlsFiles>,
     /// Allows `allow_remote` without TLS, with a warning.
     pub insecure_remote: bool,
+    /// Behind a TLS proxy (D25): clear HTTP from the proxy only; no `tls`.
+    pub proxy: Option<ProxyConfig>,
     /// Tile URL template and its attribution, given to the page.
     pub tiles: String,
     pub attribution: String,
@@ -97,6 +101,7 @@ impl Default for ServerConfig {
             allow_remote: false,
             tls: None,
             insecure_remote: false,
+            proxy: None,
             tiles: model::DEFAULT_TILES.to_owned(),
             attribution: model::DEFAULT_ATTRIBUTION.to_owned(),
             push_every: Duration::from_secs(1),
@@ -112,6 +117,7 @@ impl Default for ServerConfig {
 pub struct Server {
     addr: SocketAddr,
     https: bool,
+    public: Option<String>,
     stop: watch::Sender<bool>,
     http: JoinHandle<std::io::Result<()>>,
     pusher: JoinHandle<()>,
@@ -128,6 +134,12 @@ impl Server {
     pub fn url(&self) -> String {
         let scheme = if self.https { "https" } else { "http" };
         format!("{scheme}://{}", self.addr)
+    }
+
+    /// Behind a proxy, the public origin (`https://name`); the browser
+    /// goes there, not to [`Server::url`].
+    pub fn public_url(&self) -> Option<&str> {
+        self.public.as_deref()
     }
 
     /// Closes the SSE streams, waits for the requests in progress, and
@@ -154,19 +166,26 @@ pub async fn serve(
 /// `relaunch`, `POST /api/area` changes the watched area (lot 19).
 ///
 /// Refuses a non-loopback address without `allow_remote`, and without TLS
-/// unless `insecure_remote`; warns with it: there is no authentication
-/// (D13, D17). Unreadable or mismatched TLS files are an error.
+/// unless `insecure_remote` or behind a proxy; warns with it: there is no
+/// authentication (D13, D17). Unreadable or mismatched TLS files are an
+/// error. Behind a proxy (D25), the public name must lead here, unless
+/// `ProxyConfig::check` is off.
 pub async fn serve_with(
     monitor: Monitor,
     monitor_config: &MonitorConfig,
     relaunch: Option<Relaunch>,
     config: ServerConfig,
 ) -> Result<Server> {
+    if config.proxy.is_some() && config.tls.is_some() {
+        return Err(Error::Proxy(
+            "TLS is the proxy's: no certificate here".into(),
+        ));
+    }
     if !config.listen.ip().is_loopback() {
         if !config.allow_remote {
             return Err(Error::RemoteListen(config.listen.to_string()));
         }
-        if config.tls.is_none() {
+        if config.tls.is_none() && config.proxy.is_none() {
             if !config.insecure_remote {
                 return Err(Error::RemoteWithoutTls(config.listen.to_string()));
             }
@@ -174,6 +193,24 @@ pub async fn serve_with(
         }
         tracing::warn!(listen = %config.listen, "listening on a non-local address: anyone who can reach it can see the map and send commands");
     }
+    let behind = config
+        .proxy
+        .as_ref()
+        .map(|p| {
+            Ok::<_, Error>(guard::Behind {
+                public: proxy::Public::parse(&p.public)?,
+                from: p.from.clone(),
+                token: proxy::token(),
+            })
+        })
+        .transpose()?;
+    let probe = config
+        .proxy
+        .as_ref()
+        .filter(|p| p.check)
+        .zip(behind.as_ref())
+        .map(|(_, b)| (b.public.origin.clone(), b.token.clone()));
+    let public = behind.as_ref().map(|b| b.public.origin.clone());
     let tls = config.tls.as_ref().map(tls::load).transpose()?;
     let listener = tokio::net::TcpListener::bind(config.listen).await?;
     let addr = listener.local_addr()?;
@@ -200,6 +237,7 @@ pub async fn serve_with(
         addr,
         &config.tiles,
         tls.as_ref().map(|t| t.leaf.clone()),
+        behind,
     ));
     let app = Router::new()
         .route("/api/state", get(api::state))
@@ -219,25 +257,38 @@ pub async fn serve_with(
         None => {
             let mut http_stop = stop_rx.clone();
             tokio::spawn(async move {
-                axum::serve(listener, app)
-                    .with_graceful_shutdown(async move {
-                        let _ = http_stop.wait_for(|s| *s).await;
-                    })
-                    .await
+                // The peer address: behind a proxy, only the proxy's (D25).
+                axum::serve(
+                    listener,
+                    app.into_make_service_with_connect_info::<SocketAddr>(),
+                )
+                .with_graceful_shutdown(async move {
+                    let _ = http_stop.wait_for(|s| *s).await;
+                })
+                .await
             })
         }
     };
     let pusher = tokio::spawn(push_loop(holder.clone(), live, config.push_every, stop_rx));
     let scheme = if https { "https" } else { "http" };
     tracing::info!("map on {scheme}://{addr}/");
-    Ok(Server {
+    let server = Server {
         addr,
         https,
+        public,
         stop,
         http,
         pusher,
         holder,
-    })
+    };
+    if let Some((origin, token)) = probe {
+        if let Err(e) = proxy::probe(&origin, &token).await {
+            let _ = server.shutdown().await;
+            return Err(e);
+        }
+        tracing::info!("map behind the proxy on {origin}/ (checked)");
+    }
+    Ok(server)
 }
 
 /// Follows the monitor's notifications; at most once per `every`, when

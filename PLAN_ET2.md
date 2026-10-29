@@ -25,6 +25,7 @@ Règle : seuls les fichiers de `bitchat-geohash/` sont modifiés ; le dépôt re
 | 19 | Changement de la zone surveillée en direct (pour bitchat-console), version 0.2.0 | ✅ |
 | 20 | Changement de zone plus rapide (listes et verdicts réutilisés, sondage en arrière-plan), version 0.2.1 | ✅ |
 | 21 | Annuaire et sélection pris dans `geohash-relays` (DRY), code redondant supprimé | ✅ |
+| 22 | Derrière un proxy TLS (Cloudflare Tunnel, NGINX, Caddy) : contrôle par requête et sonde au démarrage | ✅ |
 
 La numérotation continue celle de l'étape 1. Ordre : 10 → 11 → 11 bis → 12 sont côté librairie ;
 13 dépend de 12 ; 13 bis dépend de 13 ; 14 dépend de 13 ; 15 et 16 sont indépendants entre eux ; 17 peut démarrer
@@ -471,6 +472,32 @@ sélection des relais, celle de `geohash-relays`, que bitchat-console utilise d�
 - [x] `tests/select.rs` supprimé (copie identique de celui de `geohash-relays`).
 - [x] Chemins publics inchangés ; 346 lignes supprimées, 54 ajoutées.
 
+### Lot 22 : derrière un proxy TLS ✅
+
+Demande de l'utilisateur (29/10/2026) : « le critère d'exigence pour le TLS est trop fort. il
+suffit de l'assurance de disposer en amont d'un proxy mettant en œuvre un TLS et redirigeant
+vers le port HTTP » ; configurations pour Cloudflare, NGINX et un autre proxy ; vérifier
+l'existence du proxy (choix : par requête et par une sonde au démarrage).
+
+- [x] `server::proxy` : `ProxyConfig` (nom public, `from`, `check`), `Net` (adresse ou réseau,
+      IPv4 vue en IPv6 comprise), `Public` (`Host` du nom public, port 443 implicite),
+      `forwarded_https` (`X-Forwarded-Proto`, `Forwarded`, `CF-Visitor` : au moins un, tous
+      `https`), sonde `GET https://<nom>/.well-known/bitchat-proxy-check` (reqwest, 15 s,
+      sans redirection) qui attend le jeton tiré au démarrage.
+- [x] `guard.rs` : adresse du pair (`ConnectInfo`) dans `--proxy-from`, HTTPS en amont, nom
+      public dans `Host` et `X-Forwarded-Host`, `Origin` des commandes = origine publique ;
+      refus `403 not_from_proxy`, `403 not_https_upstream`, `421 wrong_host`.
+- [x] `serve_with` : proxy et TLS exclusifs ; adresse non locale sans TLS admise derrière un
+      proxy (avec `allow_remote`) ; sonde après le démarrage, arrêt propre et
+      `Error::Proxy` si elle échoue ; `Server::public_url`.
+- [x] Binaire : `--behind-proxy`, `--proxy-from` (répétable, liste), `--no-proxy-check` ; ligne
+      `public: <url>` après `map:` ; `--open` ouvre le nom public.
+- [x] Tests : 4 unitaires (noms, réseaux, en-têtes, jetons), 1 de ligne de commande, 3 de
+      serveur (contrôles, autre adresse, sonde ratée / TLS / adresse distante).
+- [x] `docs/behind-proxy.md` : Cloudflare Tunnel (et Access), NGINX, Caddy, proxy sur une
+      autre machine ; README, spec.
+- [x] Essais réels : Caddy 2.11.7 et NGINX 1.31.8 (certificat mkcert, `https://localhost:8443` et `:8444`) : sonde passée, page, commandes et flux SSE à travers les deux, HTTP/2 vers le client, accès direct au port refusé (`not_https_upstream`), mauvais nom refusé (421) ; fichier `cloudflared` validé (`ingress validate`).
+
 ## Décisions
 
 | # | Question | Proposition | État |
@@ -491,6 +518,7 @@ sélection des relais, celle de `geohash-relays`, que bitchat-console utilise d�
 | D21 | Aperçu du niveau inférieur au survol : écoute durable ou temporaire ? | Temporaire : canaux ajoutés au plan sans rien enregistrer, retirés du plan 5 min après la dernière demande (pas « retirés » au sens de l'invariant 5, qui ne vaut que pour les canaux surveillés pour de bon) ; ils comptent dans le plafond mais cèdent la place, le plus ancien d'abord, à un autre aperçu ou à une descente ; une descente les rend permanents. Délai d'appui 400 ms côté page, au plus une demande par cellule et par minute. Limite : les événements sont éphémères, l'aperçu ne montre que l'activité qui arrive pendant l'écoute (plus le peu que `since` ramène) | ✅ (à valider par l'utilisateur) |
 | D23 | Changer la zone surveillée en direct (lot 19) | Arrêt et relance du monitor sur la nouvelle zone avec la même base (le code de démarrage, déjà éprouvé, plutôt qu'un replanning à chaud) ; les pages reçoivent un nouveau `hello` ; quelques secondes de coupure (listes rechargées, nouveaux relais sondés) ; pas de retour en arrière automatique si le démarrage échoue autrement qu'en revenant à la zone précédente — *prise par l'agent, à revoir* | ✅ |
 | D24 | Sondage au démarrage (lot 20) | Verdicts de moins d'une heure repris de la base ; avant d'écouter, seuls les relais du canal de la zone sans verdict récent ; les autres en arrière-plan (un relais mort est écouté quelques secondes, ses connexions échouent, puis il est écarté) ; `probe_in_background` à faux rend l'ancien comportement — *précision de l'utilisateur, détails par l'agent* | ✅ |
+| D25 | Derrière un proxy TLS (lot 22) | `--behind-proxy https://<nom>` remplace l'exigence de TLS dans le serveur : HTTP clair, mais seulement depuis les adresses du proxy (`--proxy-from`, boucle locale par défaut), avec la preuve d'un HTTPS en amont (`X-Forwarded-Proto`, `Forwarded`, `CF-Visitor`) et le nom public dans `Host`/`Origin`. Sonde au démarrage vers le nom public, jeton aléatoire, refus de démarrer sinon (`--no-proxy-check`) — *demande et choix de l'utilisateur, détails par l'agent, à valider* | ✅ |
 
 ## Risques
 
@@ -552,3 +580,4 @@ sélection des relais, celle de `geohash-relays`, que bitchat-console utilise d�
 | 28/10/2026 | 20 | Sondages : verdicts récents repris, relais du canal de la zone d'abord, les autres en arrière-plan (D24) ; page : niveau des subdivisions après un changement de zone. 163 tests. Mesuré : démarrage 4 ms (listes et verdicts de la base), `u09t` → `u09w` 0,5 s, `spey` (jamais vue) 0,5 s. Version 0.2.1. |
 | 28/10/2026 | — | Workspace Cargo propre (`[workspace]` dans `Cargo.toml`, `/target` ignoré), comme bitchat-console et bitchat-launcher, à la demande de l’utilisateur (lecture seule levée) ; retiré des membres de `Nostr/Cargo.toml`. `Cargo.lock` de la crate à jour (il datait de la 0.1.0). Version 0.2.2. |
 | 29/10/2026 | 21 | Annuaire et sélection pris dans `geohash-relays` (DRY), à la demande de l'utilisateur ; dépendance `geohash` retirée, `tests/select.rs` supprimé (copie). 147 tests Rust (111 sans la feature), 10 JS ; clippy propre dans les deux configurations ; `reuse lint` conforme. Version 0.3.0. |
+| 29/10/2026 | 22 | Derrière un proxy TLS (D25, demande de l'utilisateur), sans nouvelle version. 155 tests Rust (111 sans la feature) ; clippy propre. Caddy 2.11.7 et NGINX 1.31.8 (certificat mkcert, `https://localhost:8443` et `:8444`) : sonde passée, page, commandes et flux SSE à travers les deux, HTTP/2 vers le client, accès direct au port refusé (`not_https_upstream`), mauvais nom refusé (421) ; fichier `cloudflared` validé (`ingress validate`). |

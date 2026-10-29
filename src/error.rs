@@ -35,6 +35,8 @@ pub enum Error {
     RemoteWithoutTls(String),
     #[error("TLS: {0}")]
     Tls(String),
+    #[error("behind a proxy: {0}")]
+    Proxy(String),
     #[error("the monitor has stopped")]
     MonitorStopped,
     #[error("the watched area cannot change here (fixed relay lists, no database to start again)")]

@@ -11,7 +11,8 @@
 //!       [--window 15m] [--inactivity 15m] [--relays-csv <url|path>] \
 //!       [--android-csv <url|path> | --no-android] [--no-probe] [--db bitchat-geohash.sqlite] \
 //!       [--reinstate-all] [--forget-descents] [--listen 127.0.0.1:8080] [--allow-remote] \
-//!       [--tls-cert cert.pem --tls-key key.pem | --insecure-remote] \
+//!       [--tls-cert cert.pem --tls-key key.pem | --insecure-remote | \
+//!        --behind-proxy https://name [--proxy-from 127.0.0.1/8,::1] [--no-proxy-check]] \
 //!       [--tiles <url> --tiles-attribution <html>] [--open] [--verbose]
 //!
 //! Exit code 2 for a wrong command line, 1 when the monitor or the server
@@ -23,11 +24,12 @@ use std::path::PathBuf;
 use bitchat_geohash::Error;
 use bitchat_geohash::cli::{self, MONITOR_USAGE, MonitorArgs};
 use bitchat_geohash::monitor::{Monitor, MonitorConfig, MonitorStatus, RelayInfo};
-use bitchat_geohash::server::{Relaunch, ServerConfig, TlsFiles, serve_with};
+use bitchat_geohash::server::{Net, ProxyConfig, Relaunch, ServerConfig, TlsFiles, serve_with};
 use bitchat_geohash::store::Store;
 
 const SERVER_USAGE: &str = "[--listen 127.0.0.1:8080] [--allow-remote] \
-     [--tls-cert <pem> --tls-key <pem> | --insecure-remote] \
+     [--tls-cert <pem> --tls-key <pem> | --insecure-remote | \
+     --behind-proxy https://<name> [--proxy-from <addr|net>,...] [--no-proxy-check]] \
      [--tiles <url> --tiles-attribution <html>] [--open]";
 
 struct Args {
@@ -41,6 +43,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, String> {
     let (mut cert, mut key) = (None::<PathBuf>, None::<PathBuf>);
     let (mut tiles, mut attribution) = (None, None);
     let mut open = false;
+    let (mut public, mut from, mut no_check) = (None::<String>, None::<Vec<Net>>, false);
     let monitor = cli::parse(args, |flag, v| {
         match flag {
             "--listen" => server.listen = v.parsed::<SocketAddr>("address:port")?,
@@ -48,6 +51,16 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, String> {
             "--insecure-remote" => server.insecure_remote = true,
             "--tls-cert" => cert = Some(v.value()?.into()),
             "--tls-key" => key = Some(v.value()?.into()),
+            "--behind-proxy" => public = Some(v.value()?),
+            "--proxy-from" => {
+                let list = v.value()?;
+                let nets = list
+                    .split(',')
+                    .map(|n| Net::parse(n.trim()).map_err(|e| format!("--proxy-from: {e}")))
+                    .collect::<Result<Vec<_>, _>>()?;
+                from.get_or_insert_with(Vec::new).extend(nets);
+            }
+            "--no-proxy-check" => no_check = true,
             "--tiles" => tiles = Some(v.value()?),
             "--tiles-attribution" => attribution = Some(v.value()?),
             "--open" => open = true,
@@ -59,6 +72,25 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, String> {
         (Some(cert), Some(key)) => Some(TlsFiles { cert, key }),
         (None, None) => None,
         _ => return Err("--tls-cert and --tls-key go together".into()),
+    };
+    server.proxy = match public {
+        Some(public) => {
+            if server.tls.is_some() || server.insecure_remote {
+                return Err("--behind-proxy: the proxy does the TLS (no --tls-cert, \
+                     --tls-key nor --insecure-remote)"
+                    .into());
+            }
+            let mut p = ProxyConfig::new(&public).map_err(|e| format!("--behind-proxy: {e}"))?;
+            if let Some(from) = from {
+                p.from = from;
+            }
+            p.check = !no_check;
+            Some(p)
+        }
+        None if from.is_some() || no_check => {
+            return Err("--proxy-from and --no-proxy-check go with --behind-proxy".into());
+        }
+        None => None,
     };
     // The default attribution is OpenStreetMap's: other tiles need theirs.
     match (tiles, attribution) {
@@ -88,7 +120,7 @@ fn explain(e: &Error, listen: SocketAddr) -> String {
         ),
         Error::RemoteWithoutTls(_) => format!(
             "serving {listen} to other machines needs TLS (--tls-cert and --tls-key), \
-             or --insecure-remote to accept clear text"
+             a TLS proxy in front (--behind-proxy), or --insecure-remote to accept clear text"
         ),
         Error::TooManyChannels { count, max } => format!(
             "{count} channels to watch, more than the maximum of {max}: lower --depth or \
@@ -224,6 +256,15 @@ async fn main() {
         .unwrap_or_else(|e| fail("cannot serve the map", explain(&e, listen)));
     let url = format!("{}/", server.url());
     eprintln!("map: {url}");
+    // Behind a proxy the browser uses the public name: the local URL is
+    // refused there (wrong host, not from the proxy).
+    let url = match server.public_url() {
+        Some(public) => {
+            eprintln!("public: {public}/");
+            format!("{public}/")
+        }
+        None => url,
+    };
     if args.open {
         open_browser(&url);
     }
@@ -279,6 +320,41 @@ mod tests {
             "--listen: address:port expected, got \"localhost\""
         );
         assert_eq!(err("u09 --refresh 5s"), "unknown option --refresh");
+    }
+
+    #[test]
+    fn behind_a_proxy() {
+        let a = parse("u09 --behind-proxy https://Map.Example.org").unwrap();
+        let p = a.server.proxy.unwrap();
+        assert_eq!(p.public, "https://map.example.org");
+        assert_eq!(p.from, ProxyConfig::new("https://x").unwrap().from);
+        assert!(p.check);
+        let a = parse(
+            "u09 --behind-proxy https://m.example.org:8443 --listen 0.0.0.0:8080 --allow-remote \
+             --proxy-from 172.17.0.0/16,fd00::/8 --proxy-from 10.0.0.2 --no-proxy-check",
+        )
+        .unwrap();
+        let p = a.server.proxy.unwrap();
+        assert_eq!(p.public, "https://m.example.org:8443");
+        assert_eq!(p.from.len(), 3);
+        assert!(p.from[2].contains("10.0.0.2".parse().unwrap()));
+        assert!(!p.check);
+
+        let err = |s: &str| parse(s).err().unwrap();
+        assert!(err("u09 --behind-proxy http://m.example.org").contains("HTTPS"));
+        assert!(
+            err("u09 --behind-proxy https://m --insecure-remote")
+                .contains("the proxy does the TLS")
+        );
+        assert!(
+            err("u09 --behind-proxy https://m --tls-cert c --tls-key k")
+                .contains("the proxy does the TLS")
+        );
+        assert!(
+            err("u09 --behind-proxy https://m --proxy-from 10.0.0.0/40").contains("--proxy-from")
+        );
+        assert!(err("u09 --no-proxy-check").contains("go with --behind-proxy"));
+        assert!(err("u09 --proxy-from ::1").contains("go with --behind-proxy"));
     }
 
     #[test]
