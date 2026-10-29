@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+- `geohash-relays` fetched over HTTPS at its tag `v0.1.0` (was SSH, branch `main`).
+
+### Added
+- Opening to the public: `SECURITY.md`, `CONTRIBUTING.md`, issue and pull request templates, CI (fmt, clippy, tests, `cargo deny`), `deny.toml`, Dependabot; actions pinned by commit.
+
 ## [0.3.0] - 2026-10-29
 
 ### Changed

@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# cargo deny check (also in CI): known vulnerabilities, licences of the
+# dependencies, where they come from.
+
+[advisories]
+# Unmaintained crates: reported for direct dependencies only.
+unmaintained = "workspace"
+ignore = [
+    # crypto-bigint 0.5 through k256 0.13: the map only verifies signatures
+    # (public data), it signs nothing. Fixed by k256 0.14: migration to do.
+    { id = "RUSTSEC-2026-0387", reason = "k256 0.13 -> 0.14 migration pending; verification only" },
+]
+
+[licenses]
+# Compatible with this crate's licence (GPL-3.0-or-later).
+allow = ["MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Unicode-3.0", "Zlib", "0BSD", "Unlicense", "CC0-1.0", "BSL-1.0", "CDLA-Permissive-2.0", "MPL-2.0", "LGPL-2.1-or-later", "LGPL-3.0-or-later", "GPL-3.0-or-later"]
+confidence-threshold = 0.8
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-git = ["https://github.com/wvmscs/geohash-relays"]
