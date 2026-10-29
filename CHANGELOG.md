@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-29
+
 ### Changed
 - geohash-relays 0.1.1 (tag `v0.1.1`): its public opening, same code as 0.1.0.
 
