@@ -10,6 +10,18 @@ and 20001), and shows the activity per cell on a live map. It is read-only: it n
 publishes and never answers AUTH. The map gets counts only: no pubkey, no nickname, no
 message content.
 
+## Install
+
+bitchat-geohash is installed with the other BitChat tools (bitchat-console, and bitchat-launcher
+that starts both): the binaries for macOS, Linux and Docker, how to check them, and the
+development environment are in
+[bitchat-launcher's README](https://github.com/wvmscs/bitchat-launcher#install).
+From the sources alone:
+
+```sh
+cargo install --git https://github.com/wvmscs/bitchat-geohash
+```
+
 ## Run
 
 ```sh
