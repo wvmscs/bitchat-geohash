@@ -641,3 +641,4 @@ carte se met à jour immédiatement, geohash et bouton Watch indiquant le traite
 | 30/10/2026 | 24 | Version et nom de la zone sur la ligne du titre, à la demande de l'utilisateur. Vérifié dans le navigateur. |
 | 30/10/2026 | 25 | Changement de zone annoncé tout de suite à toutes les pages, à la demande de l'utilisateur. 161 tests. Console sur la carte, `spey3` : carte à jour en 180 ms, nouvelle zone à 720 ms. |
 | 30/10/2026 | 24 | Nom de la zone déplacé après la cellule (« live · #u09t ≈ … »), retour de l'utilisateur : plus de place sur la ligne du titre. |
+| 30/10/2026 | — | Version 0.4.0 (tag `v0.4.0`), à la demande de l'utilisateur. |

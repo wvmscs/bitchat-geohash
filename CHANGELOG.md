@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-30
+
 ### Added
 - The area change shows at once on every page (lot 25), whoever asks (the console over the
   map, another tab): SSE event `area` and `changing` in `hello`; the field takes the new cell,
