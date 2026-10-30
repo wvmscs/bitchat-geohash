@@ -20,6 +20,8 @@
 //! or an IP address (`"Rue de Rivoli, Paris"`, `8.8.8.8` with `--geoip-db`,
 //! the DB-IP file downloaded there if missing): the finest cell that holds
 //! it (lot 23).
+//! On a public address (`--behind-proxy`, not a loopback one) the pages take
+//! geohashes only, unless `--geocode-public` (lot 26).
 //!
 //! Exit code 2 for a wrong command line, 1 when the monitor or the server
 //! cannot start; the message on stderr says why.
@@ -39,8 +41,7 @@ const SERVER_USAGE: &str = "[--listen 127.0.0.1:8080] [--allow-remote] \
      [--tiles <url> --tiles-attribution <html>] [--open]";
 /// The area may be a place too (lot 23).
 #[cfg(feature = "geocode")]
-const GEOCODE_USAGE: &str =
-    "[--geoip-db <file.mmdb>]  (<geohash>: also #geohash, a place or an IP address)";
+const GEOCODE_USAGE: &str = "[--geoip-db <file.mmdb>] [--geocode-public]  (<geohash>: also #geohash, a place or an IP address)";
 #[cfg(not(feature = "geocode"))]
 const GEOCODE_USAGE: &str = "";
 
@@ -51,6 +52,18 @@ struct Args {
     /// DB-IP file for IP addresses typed as areas (lot 23).
     #[cfg_attr(not(feature = "geocode"), allow(dead_code))]
     geoip_db: Option<PathBuf>,
+    /// Looks places up for the pages of a public map too (lot 26).
+    #[cfg_attr(not(feature = "geocode"), allow(dead_code))]
+    geocode_public: bool,
+}
+
+/// Whether the pages may ask for place lookups (lot 26): the map has no
+/// login, so on a public address anyone could send requests to BAN and
+/// Nominatim from this machine, against their usage policy. Off there unless
+/// asked for; the area typed on the command line is the operator's.
+#[cfg_attr(not(feature = "geocode"), allow(dead_code))]
+fn pages_look_places_up(server: &ServerConfig, asked: bool) -> bool {
+    asked || (server.proxy.is_none() && server.listen.ip().is_loopback())
 }
 
 fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, String> {
@@ -60,6 +73,8 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, String> {
     let mut open = false;
     #[allow(unused_mut)]
     let mut geoip_db = None::<PathBuf>;
+    #[allow(unused_mut)]
+    let mut geocode_public = false;
     let (mut public, mut from, mut no_check) = (None::<String>, None::<Vec<Net>>, false);
     let monitor = cli::parse(args, |flag, v| {
         match flag {
@@ -83,6 +98,8 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, String> {
             "--open" => open = true,
             #[cfg(feature = "geocode")]
             "--geoip-db" => geoip_db = Some(v.value()?.into()),
+            #[cfg(feature = "geocode")]
+            "--geocode-public" => geocode_public = true,
             _ => return Ok(false),
         }
         Ok(true)
@@ -126,6 +143,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, String> {
         server,
         open,
         geoip_db,
+        geocode_public,
     })
 }
 
@@ -255,7 +273,13 @@ async fn main() {
             eprintln!("area: #{} for {} ({})", r.geohash, p.label, p.attribution);
         }
         config.start = r.geohash;
-        server_config.places = Some(std::sync::Arc::new(places));
+        if pages_look_places_up(&server_config, args.geocode_public) {
+            server_config.places = Some(std::sync::Arc::new(places));
+        } else {
+            eprintln!(
+                "places: geohashes only in the page, this map is public (--geocode-public to allow them)"
+            );
+        }
     }
 
     // A busy port is found now, not after the relay probes. Other bind
@@ -331,6 +355,19 @@ mod tests {
 
     fn parse(s: &str) -> Result<Args, String> {
         parse_args(s.split_whitespace().map(str::to_owned))
+    }
+
+    #[test]
+    fn a_public_map_does_not_look_places_up_for_its_pages() {
+        let server = |s: &str| parse(&format!("u09 {s}")).unwrap().server;
+        assert!(pages_look_places_up(&server(""), false));
+        assert!(pages_look_places_up(&server("--listen [::1]:9000"), false));
+        let remote = server("--listen 10.0.0.1:9000 --allow-remote --insecure-remote");
+        assert!(!pages_look_places_up(&remote, false));
+        assert!(pages_look_places_up(&remote, true));
+        let proxied = server("--behind-proxy https://map.example.org");
+        assert!(!pages_look_places_up(&proxied, false));
+        assert!(pages_look_places_up(&proxied, true));
     }
 
     #[test]

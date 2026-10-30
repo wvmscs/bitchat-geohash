@@ -52,6 +52,12 @@ downloaded at the `--geoip-db` path when missing (about 130 MB). A bare geohash 
 geohash (`u09t`, or `#u09t`); one word of letters and digits that is not one (`u0a`) is
 refused. Build with `--no-default-features --features server` to leave it out.
 
+A public map (`--behind-proxy`, or a non-loopback `--listen`) has no login, so its pages take
+geohashes only and show no name: otherwise anyone could send requests to these services from
+your machine. `--geocode-public` allows them; put a login in the proxy and respect
+[Nominatim's usage policy](https://operations.osmfoundation.org/policies/nominatim/). The area
+given on the command line can still be a place.
+
 To serve it on a public name, a TLS proxy in front (Cloudflare Tunnel, NGINX, Caddy) is
 enough: `--behind-proxy https://map.example.org`. The map then accepts only what comes
 through the proxy in HTTPS, and checks at start that the name leads to it; the configurations

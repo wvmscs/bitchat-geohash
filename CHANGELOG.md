@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-30
+
+### Security
+- A public map (`--behind-proxy`, or a non-loopback `--listen`) no longer looks places up for
+  its pages (lot 26, D27): it has no login, so anyone could send requests to BAN and Nominatim
+  from the server (`/api/area`, `/api/place`). They take geohashes only, unless
+  `--geocode-public`. The area given on the command line can still be a place.
+
 ## [0.4.0] - 2026-10-30
 
 ### Added

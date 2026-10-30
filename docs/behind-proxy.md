@@ -18,6 +18,9 @@ bitchat-geohash u09t --listen 0.0.0.0:8080 --allow-remote \
 Behind bitchat-console (`--map`), the map stays on the loopback without this mode: the
 console is the one behind the proxy (see bitchat-console's `docs/behind-proxy.md`).
 
+The pages of a public map take geohashes only: no place lookups, no name of the area, unless
+`--geocode-public` (README, Run). With a console in front, its login in the proxy guards them too.
+
 ## What is checked
 
 Every request must:

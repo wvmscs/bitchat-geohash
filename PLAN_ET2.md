@@ -29,6 +29,7 @@ Règle : seuls les fichiers de `bitchat-geohash/` sont modifiés ; le dépôt re
 | 23 | Zone donnée par un lieu ou une IP (`geohash-lookup`, feature `geocode`), nom approximatif de la zone | ✅ |
 | 24 | Version (tag ou commit) et nom de la zone sur la ligne du titre | ✅ |
 | 25 | Changement de zone annoncé tout de suite à toutes les pages (`area`, `changing`) | ✅ |
+| 26 | Carte publique : pas de recherche de lieux pour les pages (D27), version 0.4.1 | ✅ |
 
 La numérotation continue celle de l'étape 1. Ordre : 10 → 11 → 11 bis → 12 sont côté librairie ;
 13 dépend de 12 ; 13 bis dépend de 13 ; 14 dépend de 13 ; 15 et 16 sont indépendants entre eux ; 17 peut démarrer
@@ -551,6 +552,17 @@ carte se met à jour immédiatement, geohash et bouton Watch indiquant le traite
       la ligne de la zone, jusqu'au `hello` de la nouvelle zone ; retour en arrière si ça échoue.
 - [x] Tests : modèle, serveur.
 
+### Lot 26 : carte publique sans recherche de lieux ✅
+
+Relevé après le déploiement de la release `v2026.10.30` : la carte publique n'a pas
+d'authentification, donc n'importe qui pouvait lui faire interroger BAN et Nominatim. Choix de
+l'utilisateur : désactiver.
+
+- [x] `--behind-proxy` ou `--listen` non local : pas de `places` pour le serveur (`/api/place` en
+      404, `params.geocode` faux, page en geohashes seuls) ; `--geocode-public` pour les rétablir.
+      La zone donnée en ligne de commande reste résolue : c'est l'opérateur qui la tape.
+- [x] Test unitaire ; vérifié sur la carte publique de qualification.
+
 ## Décisions
 
 | # | Question | Proposition | État |
@@ -573,6 +585,7 @@ carte se met à jour immédiatement, geohash et bouton Watch indiquant le traite
 | D24 | Sondage au démarrage (lot 20) | Verdicts de moins d'une heure repris de la base ; avant d'écouter, seuls les relais du canal de la zone sans verdict récent ; les autres en arrière-plan (un relais mort est écouté quelques secondes, ses connexions échouent, puis il est écarté) ; `probe_in_background` à faux rend l'ancien comportement — *précision de l'utilisateur, détails par l'agent* | ✅ |
 | D25 | Derrière un proxy TLS (lot 22) | `--behind-proxy https://<nom>` remplace l'exigence de TLS dans le serveur : HTTP clair, mais seulement depuis les adresses du proxy (`--proxy-from`, boucle locale par défaut), avec la preuve d'un HTTPS en amont (`X-Forwarded-Proto`, `Forwarded`, `CF-Visitor`) et le nom public dans `Host`/`Origin`. Sonde au démarrage vers le nom public, jeton aléatoire, refus de démarrer sinon (`--no-proxy-check`) — *demande et choix de l'utilisateur, détails par l'agent, à valider* | ✅ |
 | D26 | Zone donnée par un lieu (lot 23) | Feature `geocode` (par défaut) avec `geohash-lookup` ; requêtes en direct vers BAN et Nominatim (pas de Tor, choix de l'utilisateur), dit dans le README ; IP par fichier DB-IP local en option (`--geoip-db`, téléchargé si absent) ; un geohash nu reste un geohash (compatibilité), un mot mêlant lettres et chiffres qui n'en est pas un est refusé — *demande et choix de l'utilisateur, détails par l'agent* | ✅ |
+| D27 | Recherche de lieux sur une carte publique (lot 26) | Coupée pour les pages dès que la carte est exposée (`--behind-proxy`, adresse non locale) : pas d'authentification, requêtes vers BAN et Nominatim depuis le serveur. `--geocode-public` la rétablit — *choix de l'utilisateur, détails par l'agent* | ✅ |
 
 ## Risques
 
@@ -642,3 +655,4 @@ carte se met à jour immédiatement, geohash et bouton Watch indiquant le traite
 | 30/10/2026 | 25 | Changement de zone annoncé tout de suite à toutes les pages, à la demande de l'utilisateur. 161 tests. Console sur la carte, `spey3` : carte à jour en 180 ms, nouvelle zone à 720 ms. |
 | 30/10/2026 | 24 | Nom de la zone déplacé après la cellule (« live · #u09t ≈ … »), retour de l'utilisateur : plus de place sur la ligne du titre. |
 | 30/10/2026 | — | Version 0.4.0 (tag `v0.4.0`), à la demande de l'utilisateur. |
+| 30/10/2026 | 26 | Carte publique sans recherche de lieux pour les pages (D27), à la demande de l'utilisateur. Version 0.4.1 (tag `v0.4.1`). |
