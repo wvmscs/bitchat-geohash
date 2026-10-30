@@ -64,6 +64,19 @@ test("refusals in words", () => {
   assert.equal(v.refusalText(null), "refused: unknown error");
   assert.match(v.refusalText({ error: "invalid_geohash" }), /^not a geohash/);
   assert.equal(v.refusalText({ error: "area_fixed" }), "this map watches a fixed area");
+  assert.match(v.refusalText({ error: "place_not_found" }), /^no place found/);
+  assert.equal(
+    v.refusalText({ error: "geocode", message: "Nominatim request: 429" }),
+    "the place lookup failed: Nominatim request: 429",
+  );
+});
+
+test("typed area (lot 23)", () => {
+  assert.equal(v.typedArea(" #U09T "), "u09t");
+  assert.equal(v.typedArea("u09t"), "u09t");
+  assert.equal(v.typedArea("# u09tv"), "u09tv");
+  assert.equal(v.typedArea(" Rue de Rivoli, Paris "), "Rue de Rivoli, Paris");
+  assert.equal(v.typedArea("Paris"), "Paris");
 });
 
 test("activity below a cell (preview, D21)", () => {

@@ -584,6 +584,38 @@ async fn a_fixed_area_says_so() {
     r.stop().await;
 }
 
+// --- Lot 23: places (feature `geocode`), offline: geohashes only ---
+
+#[cfg(feature = "geocode")]
+#[tokio::test]
+async fn areas_typed_with_a_hash_and_the_place_endpoint() {
+    use bitchat_geohash::geocode::Places;
+    let places = std::sync::Arc::new(Places::new(None).await.unwrap());
+    let r = Running::start_with(move |_, s| s.places = Some(places), true).await;
+    assert_eq!(r.state().await["params"]["geocode"], true);
+    let (status, body) = r.post("/api/area", r##"{"geohash":"#U09W"}"##).await;
+    assert_eq!((status, &body["start"]), (200, &json!("u09w")), "{body}");
+    assert_eq!(body["place"], Value::Null, "a geohash is not looked up");
+    let (status, body) = r.post("/api/area", r#"{"geohash":"u0a"}"#).await;
+    assert_eq!((status, &body["error"]), (400, &json!("invalid_geohash")));
+    let resp = reqwest::get(r.url("/api/place?geohash=paris"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+    r.stop().await;
+}
+
+#[tokio::test]
+async fn without_places_the_page_is_told_so() {
+    let r = Running::start(|_, _| {}).await;
+    assert_eq!(r.state().await["params"]["geocode"], false);
+    let resp = reqwest::get(r.url("/api/place?geohash=u09t"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 404);
+    r.stop().await;
+}
+
 // --- Lot 22: behind a TLS proxy (D25) ---
 
 const PUBLIC: &str = "https://map.example.org";

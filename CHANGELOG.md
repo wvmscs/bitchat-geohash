@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Added
+- Places for the area (lot 23, D26), feature `geocode` (default), with
+  [geohash-lookup](https://github.com/wvmscs/geohash-lookup) `v0.1.1`: the command line's
+  area and the page's area field take `#u09t`, a place or an IP address (`--geoip-db`, the
+  DB-IP file downloaded there if missing), resolved to the finest cell that holds it, from
+  2 characters to one level above the finest channel watched. `POST /api/area` answers the
+  `place` found; `GET /api/place?geohash=` names a cell approximately (cached), shown under
+  the area field with its data credit; `params.geocode` in `hello`. `geocode::Places`,
+  `Error::Geocode`, `Error::PlaceNotFound` (`404 place_not_found`, `502 geocode`). Typed
+  texts are never logged.
+
 ## [0.3.1] - 2026-10-29
 
 ### Changed

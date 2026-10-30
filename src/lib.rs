@@ -16,6 +16,8 @@ pub mod channels;
 pub mod cli;
 pub mod directory;
 pub mod error;
+#[cfg(feature = "geocode")]
+pub mod geocode;
 pub mod listener;
 pub mod monitor;
 pub mod nostr;

@@ -47,6 +47,11 @@ pub enum Error {
     RelayListConflict(String),
     #[error("no relay list available (download failed and none in the database)")]
     NoRelayList,
+    /// Geocoding a typed area (feature `geocode`): network, service, GeoIP file.
+    #[error("{0}")]
+    Geocode(String),
+    #[error("no place found for this text: try a town, an address, or #geohash")]
+    PlaceNotFound,
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
     /// Boxed: it carries an HTTP response and would bloat every `Result`.

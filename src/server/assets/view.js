@@ -135,6 +135,14 @@ export const appsLabel = r =>
   r.ios && r.android ? "iOS and Android" : r.ios ? "iOS only" : "Android only";
 
 // A refusal from the server, in words.
+// What the area field holds, as the server compares it with the watched
+// area: `#U09T` and `u09t` are the cell `u09t`; a place stays as typed.
+export function typedArea(text) {
+  const t = text.trim();
+  const g = t.replace(/^#\s*/, "").toLowerCase();
+  return /^[0-9b-hjkmnp-z]{1,12}$/.test(g) ? g : t;
+}
+
 export function refusalText(body) {
   switch (body && body.error) {
     case "too_many_channels":
@@ -149,6 +157,10 @@ export function refusalText(body) {
       return "this map watches a fixed area";
     case "monitor_stopped":
       return "the area is changing: try again in a moment";
+    case "place_not_found":
+      return "no place found: try a town, an address, or #geohash";
+    case "geocode":
+      return "the place lookup failed: " + ((body && body.message) || "unknown error");
     default:
       return "refused: " + ((body && body.message) || "unknown error");
   }

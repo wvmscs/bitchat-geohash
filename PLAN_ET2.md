@@ -26,6 +26,7 @@ Règle : seuls les fichiers de `bitchat-geohash/` sont modifiés ; le dépôt re
 | 20 | Changement de zone plus rapide (listes et verdicts réutilisés, sondage en arrière-plan), version 0.2.1 | ✅ |
 | 21 | Annuaire et sélection pris dans `geohash-relays` (DRY), code redondant supprimé | ✅ |
 | 22 | Derrière un proxy TLS (Cloudflare Tunnel, NGINX, Caddy) : contrôle par requête et sonde au démarrage | ✅ |
+| 23 | Zone donnée par un lieu ou une IP (`geohash-lookup`, feature `geocode`), nom approximatif de la zone | ✅ |
 
 La numérotation continue celle de l'étape 1. Ordre : 10 → 11 → 11 bis → 12 sont côté librairie ;
 13 dépend de 12 ; 13 bis dépend de 13 ; 14 dépend de 13 ; 15 et 16 sont indépendants entre eux ; 17 peut démarrer
@@ -498,6 +499,29 @@ l'existence du proxy (choix : par requête et par une sonde au démarrage).
       autre machine ; README, spec.
 - [x] Essais réels : Caddy 2.11.7 et NGINX 1.31.8 (certificat mkcert, `https://localhost:8443` et `:8444`) : sonde passée, page, commandes et flux SSE à travers les deux, HTTP/2 vers le client, accès direct au port refusé (`not_https_upstream`), mauvais nom refusé (421) ; fichier `cloudflared` validé (`ingress validate`).
 
+### Lot 23 : zone donnée par un lieu, nom de la zone ✅
+
+Demande de l'utilisateur (30/10/2026) : référencer la crate `geohash-lookup` dans Console et
+Geohash pour les champs de saisie de cellule et les lignes de commande, saisir `#u09t` ou un
+texte ; géocodage inverse affiché ; intégration sous forme de feature ; requêtes en direct
+(sans Tor) ; base GeoIP en option, téléchargée si absente.
+
+- [x] Feature `geocode` (par défaut), dépendance `geohash-lookup` `v0.1.1` (dépôt public,
+      tag), `deny.toml` autorise son dépôt.
+- [x] `geocode::Places` : `resolve` (`#u09t` et `u09t` tels quels, un lieu ou une IP vers la
+      cellule la plus fine qui le contient, bornée par `area_bounds` : 2 à un niveau
+      au-dessus du plus fin surveillé), `name` (géocodage inverse, mis en cache, 256 noms).
+- [x] Serveur : `POST /api/area` résout le texte (réponse `place`), `GET /api/place`,
+      `params.geocode`, erreurs `404 place_not_found` et `502 geocode` ; le texte tapé n'est
+      jamais journalisé.
+- [x] Binaire : zone de départ donnée par un lieu (ligne `area: #… for …` avec le crédit des
+      données), `--geoip-db`.
+- [x] Page : champ « area: u09t, a place or an IP address », nom approximatif sous le champ
+      (crédit en infobulle).
+- [x] Tests : 2 unitaires (`geocode`), 2 de serveur (hors ligne), 2 JS ; essai réel : « Rue de
+      Rivoli, Paris » → `#u09tv` (« Paris, Ile-de-France… »), « Tokyo » → `xn`, texte inconnu
+      → `place_not_found`, aucun texte dans les journaux.
+
 ## Décisions
 
 | # | Question | Proposition | État |
@@ -519,6 +543,7 @@ l'existence du proxy (choix : par requête et par une sonde au démarrage).
 | D23 | Changer la zone surveillée en direct (lot 19) | Arrêt et relance du monitor sur la nouvelle zone avec la même base (le code de démarrage, déjà éprouvé, plutôt qu'un replanning à chaud) ; les pages reçoivent un nouveau `hello` ; quelques secondes de coupure (listes rechargées, nouveaux relais sondés) ; pas de retour en arrière automatique si le démarrage échoue autrement qu'en revenant à la zone précédente — *prise par l'agent, à revoir* | ✅ |
 | D24 | Sondage au démarrage (lot 20) | Verdicts de moins d'une heure repris de la base ; avant d'écouter, seuls les relais du canal de la zone sans verdict récent ; les autres en arrière-plan (un relais mort est écouté quelques secondes, ses connexions échouent, puis il est écarté) ; `probe_in_background` à faux rend l'ancien comportement — *précision de l'utilisateur, détails par l'agent* | ✅ |
 | D25 | Derrière un proxy TLS (lot 22) | `--behind-proxy https://<nom>` remplace l'exigence de TLS dans le serveur : HTTP clair, mais seulement depuis les adresses du proxy (`--proxy-from`, boucle locale par défaut), avec la preuve d'un HTTPS en amont (`X-Forwarded-Proto`, `Forwarded`, `CF-Visitor`) et le nom public dans `Host`/`Origin`. Sonde au démarrage vers le nom public, jeton aléatoire, refus de démarrer sinon (`--no-proxy-check`) — *demande et choix de l'utilisateur, détails par l'agent, à valider* | ✅ |
+| D26 | Zone donnée par un lieu (lot 23) | Feature `geocode` (par défaut) avec `geohash-lookup` ; requêtes en direct vers BAN et Nominatim (pas de Tor, choix de l'utilisateur), dit dans le README ; IP par fichier DB-IP local en option (`--geoip-db`, téléchargé si absent) ; un geohash nu reste un geohash (compatibilité), un mot mêlant lettres et chiffres qui n'en est pas un est refusé — *demande et choix de l'utilisateur, détails par l'agent* | ✅ |
 
 ## Risques
 
@@ -583,3 +608,4 @@ l'existence du proxy (choix : par requête et par une sonde au démarrage).
 | 29/10/2026 | 22 | Derrière un proxy TLS (D25, demande de l'utilisateur), sans nouvelle version. 155 tests Rust (111 sans la feature) ; clippy propre. Caddy 2.11.7 et NGINX 1.31.8 (certificat mkcert, `https://localhost:8443` et `:8444`) : sonde passée, page, commandes et flux SSE à travers les deux, HTTP/2 vers le client, accès direct au port refusé (`not_https_upstream`), mauvais nom refusé (421) ; fichier `cloudflared` validé (`ingress validate`). |
 | 29/10/2026 | — | Dépendance à geohash-relays `v0.1.1` (ouverture au public, même code que `v0.1.0`), à la demande de l'utilisateur. 155 tests (111 sans la feature), clippy, `cargo deny`. |
 | 29/10/2026 | — | Version 0.3.1 (tag `v0.3.1`), avant l'ouverture au public, à la demande de l'utilisateur. |
+| 30/10/2026 | 23 | Zone donnée par un lieu ou une IP et nom approximatif de la zone (D26), feature `geocode` avec `geohash-lookup` `v0.1.1`, à la demande de l'utilisateur. 159 tests Rust (111 sans la feature), 11 JS ; clippy propre dans les trois configurations. Essai réel : « Rue de Rivoli, Paris » → `#u09tv`, « Tokyo » → `xn`. |

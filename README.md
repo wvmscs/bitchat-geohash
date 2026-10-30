@@ -37,6 +37,21 @@ mkcert -install && mkcert localhost 127.0.0.1 ::1
 cargo run --release -- u09 --tls-cert localhost+2.pem --tls-key localhost+2-key.pem --open
 ```
 
+The area may also be a place or an IP address (feature `geocode`, on by default), looked up
+with [geohash-lookup](https://github.com/wvmscs/geohash-lookup): the finest cell that holds
+it.
+
+```sh
+cargo run --release -- "Rue de Rivoli, Paris" --open     # #u09tv
+cargo run --release -- 8.8.8.8 --geoip-db ~/.local/share/bitchat-geohash/dbip-city-lite.mmdb
+```
+
+A place typed goes straight to BAN (French addresses) and Nominatim (OpenStreetMap), which
+see it with this machine's IP address; IP addresses are looked up in the local DB-IP file,
+downloaded at the `--geoip-db` path when missing (about 130 MB). A bare geohash stays a
+geohash (`u09t`, or `#u09t`); one word of letters and digits that is not one (`u0a`) is
+refused. Build with `--no-default-features --features server` to leave it out.
+
 To serve it on a public name, a TLS proxy in front (Cloudflare Tunnel, NGINX, Caddy) is
 enough: `--behind-proxy https://map.example.org`. The map then accepts only what comes
 through the proxy in HTTPS, and checks at start that the name leads to it; the configurations
@@ -46,7 +61,9 @@ On the map:
 
 - Hover a cell for its counts and relays; hovering a while also previews the level below.
 - Click a cell to descend one level, go back up, or reinstate a retired cell.
-- Type another area in the panel and press "Watch" to watch it instead, without restarting.
+- Type another area in the panel (a geohash, `#u09t`, a place or an IP address) and press
+  "Watch" to watch it instead, without restarting; its approximate name shows below the
+  field.
 - In the panel, choose the level and the scale, show the relays, or show the meshes (the
   sum of the channels inside each one).
 

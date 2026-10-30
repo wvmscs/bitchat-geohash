@@ -91,3 +91,4 @@ button:disabled { opacity: .5; cursor: default; }
 #panel .area { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
 #panel .area input { flex: 1 1 100px; min-width: 0; font: inherit; font-size: 13px; padding: 3px 6px; }
 #panel .area .warn { flex-basis: 100%; }
+#panel .area .place { flex-basis: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

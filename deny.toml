@@ -27,4 +27,4 @@ multiple-versions = "allow"
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
-allow-git = ["https://github.com/wvmscs/geohash-relays"]
+allow-git = ["https://github.com/wvmscs/geohash-relays", "https://github.com/wvmscs/geohash-lookup"]

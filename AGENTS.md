@@ -25,8 +25,8 @@ Step 3 adds a Swift UI through `uniffi`; the Swift package lives in `swift/`.
 - Edit or regenerate `tests/data/*.csv` or `tests/data/tls/`: they are frozen for
   reproducibility (the TLS files are test-only; their CA key was deleted).
 - Edit a migration that has been committed (see invariant 4).
-- Add dependencies without discussion. Approved: those listed in lot 0 of `PLAN_ET1.md` and
-  lot 10 of `PLAN_ET2.md`.
+- Add dependencies without discussion. Approved: those listed in lot 0 of `PLAN_ET1.md`,
+  lot 10 of `PLAN_ET2.md`, and `geohash-lookup` (lot 23, feature `geocode`).
 - Edit `src/server/assets/leaflet/`: Leaflet 1.9.4 as released (a test checks its SHA-256).
 - Remove existing functionality.
 

@@ -39,11 +39,17 @@ hyper-util = { version = "0.1", optional = true, features = ["server-auto", "tok
 rustls-pki-types = { version = "1.9", optional = true, features = ["std"] }
 # Logs of the binary.
 tracing-subscriber = { version = "0.3", optional = true }
+# Cells from a place, an address or an IP address, and the approximate name of
+# a cell (feature `geocode`): BAN, Nominatim, DB-IP. Own repository.
+geohash-lookup = { git = "https://github.com/wvmscs/geohash-lookup.git", tag = "v0.1.1", optional = true, default-features = false }
 
 [features]
-default = ["server"]
+default = ["server", "geocode"]
 # The web server and the `bitchat-geohash` binary. Off: the library alone.
 server = ["dep:axum", "dep:tokio-rustls", "dep:hyper", "dep:hyper-util", "dep:rustls-pki-types", "dep:tracing-subscriber", "tokio/signal"]
+# The cell fields and the command line take a place or an IP address too
+# (`#u09t`, `Paris`, `8.8.8.8`), and the page names the watched area.
+geocode = ["dep:geohash-lookup"]
 
 [[bin]]
 name = "bitchat-geohash"

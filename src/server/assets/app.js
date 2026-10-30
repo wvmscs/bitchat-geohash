@@ -11,7 +11,7 @@
 
 import {
   ago, ancestors, appsLabel, belowSummary, cellsMeeting, childLevel, childrenOf, fillColour,
-  formatHash, levelCounts, levelLabel, maxValue, parseHash, rank, refusalText, rejectedTotal,
+  formatHash, levelCounts, levelLabel, maxValue, parseHash, rank, refusalText, rejectedTotal, typedArea,
   ringAnchors, ringed, scaleValue, PALETTE,
 } from "./view.js";
 
@@ -467,6 +467,23 @@ function drawBelow() {
   if (layer && layer.isTooltipOpen()) layer.setTooltipContent(tooltip(state.cells.get(g)));
 }
 
+// --- Name of the area (lot 23) --------------------------------------------
+
+// Asks the server once per area; nothing when it does not look places up.
+async function nameArea(start) {
+  if (!state.params || !state.params.geocode || ui.place.dataset.for === start) return;
+  ui.place.dataset.for = start;
+  ui.place.textContent = "";
+  ui.place.title = "";
+  try {
+    const resp = await fetch("/api/place?geohash=" + encodeURIComponent(start));
+    const data = resp.ok ? await resp.json() : null;
+    if (ui.place.dataset.for !== start || !data || !data.place) return;
+    ui.place.textContent = "≈ " + data.place.label;
+    ui.place.title = `${data.place.label}\napproximate name of #${start} (${data.place.source}: ${data.place.attribution})`;
+  } catch { /* no name: the cell is shown anyway */ }
+}
+
 // --- Commands (lot 15) -----------------------------------------------------
 
 async function command(path, body) {
@@ -731,7 +748,9 @@ function buildPanel() {
   const watch = el("button", null, "Watch");
   const areaResult = el("span", "warn small");
   const changeArea = async () => {
-    const geohash = ui.area.value.trim().toLowerCase();
+    // A place or an IP address too, when the server looks them up (lot 23).
+    const typed = typedArea(ui.area.value);
+    const geohash = state.params && state.params.geocode ? typed : typed.toLowerCase();
     if (!geohash || (state.params && geohash === state.params.start)) return;
     watch.disabled = true;
     watch.textContent = "changing…";
@@ -740,11 +759,15 @@ function buildPanel() {
     watch.disabled = false;
     watch.textContent = "Watch";
     if (!ok) areaResult.textContent = refusalText(data);
+    // A place typed: the field shows the cell it gave (lot 23).
+    else if (data && data.start) ui.area.value = data.start;
   };
   watch.addEventListener("click", changeArea);
   ui.area.addEventListener("keydown", e => { if (e.key === "Enter") changeArea(); });
   const area = el("div", "area");
-  area.append(ui.area, watch, areaResult);
+  // The approximate name of the watched area (lot 23).
+  ui.place = el("div", "place muted small");
+  area.append(ui.area, watch, areaResult, ui.place);
 
   const legend = el("div", "legend");
   const bar = el("div", "bar");
@@ -863,6 +886,8 @@ function onHello(d) {
   }
   state.params = d.params;
   if (document.activeElement !== ui.area) ui.area.value = d.params.start;
+  ui.area.placeholder = d.params.geocode ? "area: u09t, a place or an IP address" : "area, e.g. u09t";
+  nameArea(d.params.start);
   if (!tiles) {
     tiles = L.tileLayer(d.params.tiles, {
       maxZoom: 19,

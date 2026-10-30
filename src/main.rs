@@ -13,7 +13,13 @@
 //!       [--reinstate-all] [--forget-descents] [--listen 127.0.0.1:8080] [--allow-remote] \
 //!       [--tls-cert cert.pem --tls-key key.pem | --insecure-remote | \
 //!        --behind-proxy https://name [--proxy-from 127.0.0.1/8,::1] [--no-proxy-check]] \
-//!       [--tiles <url> --tiles-attribution <html>] [--open] [--verbose]
+//!       [--tiles <url> --tiles-attribution <html>] [--open] [--verbose] \
+//!       [--geoip-db <file.mmdb>]
+//!
+//! With the `geocode` feature (default), the area may be `#u09t`, a place
+//! or an IP address (`"Rue de Rivoli, Paris"`, `8.8.8.8` with `--geoip-db`,
+//! the DB-IP file downloaded there if missing): the finest cell that holds
+//! it (lot 23).
 //!
 //! Exit code 2 for a wrong command line, 1 when the monitor or the server
 //! cannot start; the message on stderr says why.
@@ -31,11 +37,20 @@ const SERVER_USAGE: &str = "[--listen 127.0.0.1:8080] [--allow-remote] \
      [--tls-cert <pem> --tls-key <pem> | --insecure-remote | \
      --behind-proxy https://<name> [--proxy-from <addr|net>,...] [--no-proxy-check]] \
      [--tiles <url> --tiles-attribution <html>] [--open]";
+/// The area may be a place too (lot 23).
+#[cfg(feature = "geocode")]
+const GEOCODE_USAGE: &str =
+    "[--geoip-db <file.mmdb>]  (<geohash>: also #geohash, a place or an IP address)";
+#[cfg(not(feature = "geocode"))]
+const GEOCODE_USAGE: &str = "";
 
 struct Args {
     monitor: MonitorArgs,
     server: ServerConfig,
     open: bool,
+    /// DB-IP file for IP addresses typed as areas (lot 23).
+    #[cfg_attr(not(feature = "geocode"), allow(dead_code))]
+    geoip_db: Option<PathBuf>,
 }
 
 fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, String> {
@@ -43,6 +58,8 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, String> {
     let (mut cert, mut key) = (None::<PathBuf>, None::<PathBuf>);
     let (mut tiles, mut attribution) = (None, None);
     let mut open = false;
+    #[allow(unused_mut)]
+    let mut geoip_db = None::<PathBuf>;
     let (mut public, mut from, mut no_check) = (None::<String>, None::<Vec<Net>>, false);
     let monitor = cli::parse(args, |flag, v| {
         match flag {
@@ -64,6 +81,8 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, String> {
             "--tiles" => tiles = Some(v.value()?),
             "--tiles-attribution" => attribution = Some(v.value()?),
             "--open" => open = true,
+            #[cfg(feature = "geocode")]
+            "--geoip-db" => geoip_db = Some(v.value()?.into()),
             _ => return Ok(false),
         }
         Ok(true)
@@ -106,6 +125,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, String> {
         monitor,
         server,
         open,
+        geoip_db,
     })
 }
 
@@ -192,7 +212,9 @@ fn open_browser(url: &str) {
 #[tokio::main]
 async fn main() {
     let args = parse_args(std::env::args().skip(1)).unwrap_or_else(|e| {
-        eprintln!("bitchat-geohash: {e}\nusage: bitchat-geohash {MONITOR_USAGE} {SERVER_USAGE}");
+        eprintln!(
+            "bitchat-geohash: {e}\nusage: bitchat-geohash {MONITOR_USAGE} {SERVER_USAGE} {GEOCODE_USAGE}"
+        );
         std::process::exit(2)
     });
     tracing_subscriber::fmt()
@@ -207,12 +229,34 @@ async fn main() {
         .init();
     bitchat_geohash::install_crypto_provider();
     let MonitorArgs {
-        config,
+        #[allow(unused_mut)]
+        mut config,
         sources,
         db,
         ..
     } = args.monitor;
-    let listen = args.server.listen;
+    #[allow(unused_mut)]
+    let mut server_config = args.server;
+    let listen = server_config.listen;
+
+    // The area typed may be a place (lot 23): its cell, before anything else.
+    #[cfg(feature = "geocode")]
+    {
+        use bitchat_geohash::geocode::{Places, area_bounds};
+        let places = Places::new(args.geoip_db.as_deref())
+            .await
+            .unwrap_or_else(|e| fail("cannot geocode", e));
+        let (min, max) = area_bounds(&config.levels);
+        let r = places
+            .resolve(&config.start, min, max)
+            .await
+            .unwrap_or_else(|e| fail("cannot find the area", e));
+        if let Some(p) = &r.place {
+            eprintln!("area: #{} for {} ({})", r.geohash, p.label, p.attribution);
+        }
+        config.start = r.geohash;
+        server_config.places = Some(std::sync::Arc::new(places));
+    }
 
     // A busy port is found now, not after the relay probes. Other bind
     // errors (a remote address without --allow-remote...) come from `serve`.
@@ -223,7 +267,7 @@ async fn main() {
         fail("cannot serve the map", explain(&Error::Io(e), listen))
     }
     // Likewise a missing certificate or key: `serve` checks the contents.
-    if let Some(tls) = &args.server.tls {
+    if let Some(tls) = &server_config.tls {
         for path in [&tls.cert, &tls.key] {
             if let Err(e) = std::fs::File::open(path) {
                 let cwd = std::env::current_dir().unwrap_or_default();
@@ -251,7 +295,7 @@ async fn main() {
         sources,
         db: db.clone(),
     };
-    let server = serve_with(monitor, &config, Some(relaunch), args.server)
+    let server = serve_with(monitor, &config, Some(relaunch), server_config)
         .await
         .unwrap_or_else(|e| fail("cannot serve the map", explain(&e, listen)));
     let url = format!("{}/", server.url());

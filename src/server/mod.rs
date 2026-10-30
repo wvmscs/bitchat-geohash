@@ -92,6 +92,10 @@ pub struct ServerConfig {
     pub max_streams: usize,
     /// Request body size, in bytes (default 64 KiB).
     pub max_body: usize,
+    /// Places for the area field and the name of the area (lot 23): none,
+    /// geohashes only.
+    #[cfg(feature = "geocode")]
+    pub places: Option<Arc<crate::geocode::Places>>,
 }
 
 impl Default for ServerConfig {
@@ -108,6 +112,8 @@ impl Default for ServerConfig {
             keep_alive: Duration::from_secs(15),
             max_streams: 64,
             max_body: 64 * 1024,
+            #[cfg(feature = "geocode")]
+            places: None,
         }
     }
 }
@@ -215,7 +221,12 @@ pub async fn serve_with(
     let listener = tokio::net::TcpListener::bind(config.listen).await?;
     let addr = listener.local_addr()?;
     let holder = Arc::new(Holder::new(monitor, monitor_config.clone(), relaunch));
-    let params = Params::new(monitor_config, &config.tiles, &config.attribution);
+    #[allow(unused_mut)]
+    let mut params = Params::new(monitor_config, &config.tiles, &config.attribution);
+    #[cfg(feature = "geocode")]
+    {
+        params.geocode = config.places.is_some();
+    }
     let (tx, _) = broadcast::channel(64);
     let live = Arc::new(Live {
         published: Mutex::new(Published::new(params)),
@@ -232,6 +243,8 @@ pub async fn serve_with(
         max_streams: config.max_streams,
         keep_alive: config.keep_alive,
         stop: stop_rx.clone(),
+        #[cfg(feature = "geocode")]
+        places: config.places.clone(),
     };
     let guard = Arc::new(guard::Guard::new(
         addr,
@@ -245,7 +258,10 @@ pub async fn serve_with(
         .route("/api/descend", post(api::descend))
         .route("/api/preview", post(api::preview))
         .route("/api/reinstate", post(api::reinstate))
-        .route("/api/area", post(api::area))
+        .route("/api/area", post(api::area));
+    #[cfg(feature = "geocode")]
+    let app = app.route("/api/place", get(api::place));
+    let app = app
         .with_state(state)
         .merge(router())
         .layer(DefaultBodyLimit::max(config.max_body))
@@ -393,7 +409,8 @@ async fn reset(monitor: &Monitor, config: &MonitorConfig, live: &Live) -> Result
     let (cells, relays, meshes, status) = read(monitor).await?;
     let mut published = live.published.lock().expect("not poisoned");
     let old = published.params();
-    let params = Params::new(config, &old.tiles, &old.attribution);
+    let mut params = Params::new(config, &old.tiles, &old.attribution);
+    params.geocode = old.geocode;
     // The sequence goes on: a page that missed the `hello` sees a gap and
     // reconnects.
     let seq = published.seq();

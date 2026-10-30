@@ -265,6 +265,9 @@ pub struct Params {
     pub attribution: String,
     /// Mesh precisions summed for the mesh layer (lot 16), 3 included.
     pub mesh_levels: Vec<usize>,
+    /// The area field takes places and IP addresses too, and the page can
+    /// ask for the name of the area (feature `geocode`, lot 23).
+    pub geocode: bool,
 }
 
 /// Mesh precisions of the mesh layer: every prefix length that can hold a
@@ -284,6 +287,7 @@ impl Params {
             tiles: tiles.to_owned(),
             attribution: attribution.to_owned(),
             mesh_levels: MESH_LEVELS.to_vec(),
+            geocode: false,
         }
     }
 }

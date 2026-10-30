@@ -38,6 +38,8 @@ pub(crate) struct AppState {
     pub(crate) max_streams: usize,
     pub(crate) keep_alive: Duration,
     pub(crate) stop: watch::Receiver<bool>,
+    #[cfg(feature = "geocode")]
+    pub(crate) places: Option<Arc<crate::geocode::Places>>,
 }
 
 /// An error answer: `{"error": code, "message": ..., ...details}`.
@@ -93,6 +95,10 @@ impl From<Error> for ApiError {
                 ApiError::new(StatusCode::SERVICE_UNAVAILABLE, "monitor_stopped", message)
             }
             Error::AreaFixed => ApiError::new(StatusCode::CONFLICT, "area_fixed", message),
+            Error::PlaceNotFound => {
+                ApiError::new(StatusCode::NOT_FOUND, "place_not_found", message)
+            }
+            Error::Geocode(_) => ApiError::new(StatusCode::BAD_GATEWAY, "geocode", message),
             _ => ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "internal", message),
         }
     }
@@ -253,16 +259,57 @@ pub(crate) async fn reinstate(
 
 /// `POST /api/area {"geohash": "u09t"}`: watches that area instead (lot 19).
 /// Answers once the new area is watched; the pages get a new `hello`.
+/// With places (lot 23), `"geohash"` may also be `#u09t`, a place or an IP
+/// address: the answer then has the `place` found. A typed text is not
+/// logged, only the cell it gives.
 pub(crate) async fn area(
     State(s): State<AppState>,
     body: Result<Json<DescendBody>, JsonRejection>,
 ) -> Result<Json<Value>, ApiError> {
     let Json(body) = body?;
-    tracing::info!(geohash = %body.geohash, "command: area");
-    let config = s.holder.change(&body.geohash).await.inspect_err(|e| {
-        tracing::info!(geohash = %body.geohash, error = %e, "area change refused");
+    #[cfg(feature = "geocode")]
+    let (geohash, place) = match &s.places {
+        Some(places) => {
+            let (min, max) = crate::geocode::area_bounds(&s.holder.config().levels);
+            let r = places
+                .resolve(&body.geohash, min, max)
+                .await
+                .inspect_err(|e| {
+                    tracing::info!(error = %e, "area: nothing found for the text typed");
+                })?;
+            (r.geohash, r.place)
+        }
+        None => (body.geohash, None),
+    };
+    #[cfg(not(feature = "geocode"))]
+    let (geohash, place) = (body.geohash, None::<()>);
+    tracing::info!(%geohash, "command: area");
+    let config = s.holder.change(&geohash).await.inspect_err(|e| {
+        tracing::info!(%geohash, error = %e, "area change refused");
     })?;
     Ok(Json(
-        json!({ "start": config.start, "depth": config.depth }),
+        json!({ "start": config.start, "depth": config.depth, "place": place }),
     ))
+}
+
+#[cfg(feature = "geocode")]
+#[derive(Deserialize)]
+pub(crate) struct PlaceQuery {
+    geohash: String,
+}
+
+/// `GET /api/place?geohash=u09t` (lot 23): the approximate name of a cell,
+/// `{"label", "source", "attribution"}`, or `{"place": null}` when nothing
+/// is named there (open sea). Asked once per cell.
+#[cfg(feature = "geocode")]
+pub(crate) async fn place(
+    State(s): State<AppState>,
+    axum::extract::Query(q): axum::extract::Query<PlaceQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let places = s
+        .places
+        .as_ref()
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "no_places", "place names are off"))?;
+    let place = places.name(&q.geohash).await?;
+    Ok(Json(json!({ "geohash": q.geohash, "place": place })))
 }
