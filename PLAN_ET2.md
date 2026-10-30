@@ -27,6 +27,7 @@ Règle : seuls les fichiers de `bitchat-geohash/` sont modifiés ; le dépôt re
 | 21 | Annuaire et sélection pris dans `geohash-relays` (DRY), code redondant supprimé | ✅ |
 | 22 | Derrière un proxy TLS (Cloudflare Tunnel, NGINX, Caddy) : contrôle par requête et sonde au démarrage | ✅ |
 | 23 | Zone donnée par un lieu ou une IP (`geohash-lookup`, feature `geocode`), nom approximatif de la zone | ✅ |
+| 24 | Version (tag ou commit) et nom de la zone sur la ligne du titre | ✅ |
 
 La numérotation continue celle de l'étape 1. Ordre : 10 → 11 → 11 bis → 12 sont côté librairie ;
 13 dépend de 12 ; 13 bis dépend de 13 ; 14 dépend de 13 ; 15 et 16 sont indépendants entre eux ; 17 peut démarrer
@@ -522,6 +523,17 @@ texte ; géocodage inverse affiché ; intégration sous forme de feature ; requ�
       Rivoli, Paris » → `#u09tv` (« Paris, Ile-de-France… »), « Tokyo » → `xn`, texte inconnu
       → `place_not_found`, aucun texte dans les journaux.
 
+### Lot 24 : version et nom sur la ligne du titre ✅
+
+Demande de l'utilisateur (30/10/2026) : le résultat de `geohash-lookup` sur la ligne de « BitChat
+geohash activity », avec la version (7 caractères du commit si non versionné).
+
+- [x] `build.rs` : tag `v*` du commit, sinon 7 caractères du commit ; `BITCHAT_BUILD_VERSION`
+      pour une copie sans `.git` (`release.sh` de bitchat-web), sinon la version de `Cargo.toml`.
+- [x] `VERSION`, `params.version` ; page : version et nom dans l'en-tête du panneau (nom tronqué
+      s'il est long, entier en infobulle).
+- [x] Test de serveur ; vérifié dans le navigateur (`ff1f009`, « ≈ Hauts-de-Seine… »).
+
 ## Décisions
 
 | # | Question | Proposition | État |
@@ -609,3 +621,4 @@ texte ; géocodage inverse affiché ; intégration sous forme de feature ; requ�
 | 29/10/2026 | — | Dépendance à geohash-relays `v0.1.1` (ouverture au public, même code que `v0.1.0`), à la demande de l'utilisateur. 155 tests (111 sans la feature), clippy, `cargo deny`. |
 | 29/10/2026 | — | Version 0.3.1 (tag `v0.3.1`), avant l'ouverture au public, à la demande de l'utilisateur. |
 | 30/10/2026 | 23 | Zone donnée par un lieu ou une IP et nom approximatif de la zone (D26), feature `geocode` avec `geohash-lookup` `v0.1.1`, à la demande de l'utilisateur. 159 tests Rust (111 sans la feature), 11 JS ; clippy propre dans les trois configurations. Essai réel : « Rue de Rivoli, Paris » → `#u09tv`, « Tokyo » → `xn`. |
+| 30/10/2026 | 24 | Version et nom de la zone sur la ligne du titre, à la demande de l'utilisateur. Vérifié dans le navigateur. |

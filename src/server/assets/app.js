@@ -669,7 +669,11 @@ function buildPanel() {
     const folded = panel.classList.toggle("folded");
     toggle.textContent = folded ? "▸" : "▾";
   });
-  head.append(el("h1", null, "BitChat geohash activity"), toggle);
+  // On the title's line (lot 24): the version, the approximate name of the
+  // watched area (lot 23), which stay visible when the panel is folded.
+  ui.version = el("span", "version muted small");
+  ui.place = el("span", "place muted small");
+  head.append(el("h1", null, "BitChat geohash activity"), ui.version, ui.place, toggle);
   // On a phone the map comes first: the panel starts folded.
   if (window.innerWidth < 600) {
     panel.classList.add("folded");
@@ -765,9 +769,7 @@ function buildPanel() {
   watch.addEventListener("click", changeArea);
   ui.area.addEventListener("keydown", e => { if (e.key === "Enter") changeArea(); });
   const area = el("div", "area");
-  // The approximate name of the watched area (lot 23).
-  ui.place = el("div", "place muted small");
-  area.append(ui.area, watch, areaResult, ui.place);
+  area.append(ui.area, watch, areaResult);
 
   const legend = el("div", "legend");
   const bar = el("div", "bar");
@@ -887,6 +889,8 @@ function onHello(d) {
   state.params = d.params;
   if (document.activeElement !== ui.area) ui.area.value = d.params.start;
   ui.area.placeholder = d.params.geocode ? "area: u09t, a place or an IP address" : "area, e.g. u09t";
+  ui.version.textContent = d.params.version;
+  ui.version.title = "version of this bitchat-geohash";
   nameArea(d.params.start);
   if (!tiles) {
     tiles = L.tileLayer(d.params.tiles, {

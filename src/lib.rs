@@ -30,6 +30,10 @@ pub mod store;
 
 pub use error::{Error, Result};
 
+/// The version of this build: its `v*` tag, else the first 7 characters of
+/// its commit (see `build.rs`).
+pub const VERSION: &str = env!("BITCHAT_VERSION");
+
 /// Location-channel message (ephemeral).
 pub const KIND_GEO_MESSAGE: u32 = 20000;
 /// Location-channel presence heartbeat (ephemeral).

@@ -24,8 +24,10 @@ svg.defs { position: absolute; width: 0; height: 0; }
          max-height: calc(100% - 20px); overflow: auto; box-sizing: border-box; padding: 10px 12px;
          background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
          box-shadow: 0 4px 16px rgba(0,0,0,.18); }
-#panel .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-#panel h1 { font-size: 15px; margin: 0; }
+#panel .head { display: flex; align-items: center; gap: 8px; }
+#panel h1 { font-size: 15px; margin: 0; white-space: nowrap; }
+#panel .head .version { white-space: nowrap; }
+#panel .head .place { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #panel .toggle { background: none; border: 0; color: var(--fg); font-size: 16px; cursor: pointer; padding: 0 4px; }
 #panel.folded .body { display: none; }
 #panel .link { margin: 4px 0; }
@@ -91,4 +93,3 @@ button:disabled { opacity: .5; cursor: default; }
 #panel .area { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
 #panel .area input { flex: 1 1 100px; min-width: 0; font: inherit; font-size: 13px; padding: 3px 6px; }
 #panel .area .warn { flex-basis: 100%; }
-#panel .area .place { flex-basis: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

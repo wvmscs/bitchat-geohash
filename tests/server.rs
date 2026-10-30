@@ -609,6 +609,10 @@ async fn areas_typed_with_a_hash_and_the_place_endpoint() {
 async fn without_places_the_page_is_told_so() {
     let r = Running::start(|_, _| {}).await;
     assert_eq!(r.state().await["params"]["geocode"], false);
+    assert_eq!(
+        r.state().await["params"]["version"],
+        bitchat_geohash::VERSION
+    );
     let resp = reqwest::get(r.url("/api/place?geohash=u09t"))
         .await
         .unwrap();

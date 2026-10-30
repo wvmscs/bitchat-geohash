@@ -268,6 +268,8 @@ pub struct Params {
     /// The area field takes places and IP addresses too, and the page can
     /// ask for the name of the area (feature `geocode`, lot 23).
     pub geocode: bool,
+    /// The version of this build, shown by the page (lot 24).
+    pub version: String,
 }
 
 /// Mesh precisions of the mesh layer: every prefix length that can hold a
@@ -288,6 +290,7 @@ impl Params {
             attribution: attribution.to_owned(),
             mesh_levels: MESH_LEVELS.to_vec(),
             geocode: false,
+            version: crate::VERSION.to_owned(),
         }
     }
 }

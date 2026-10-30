@@ -3,6 +3,10 @@
 ## [Unreleased]
 
 ### Added
+- The version on the panel's title line (lot 24): the `v*` tag of the build, else the first 7
+  characters of its commit (`build.rs`, `BITCHAT_BUILD_VERSION` when packaging from a copy
+  without `.git`), `VERSION`, `params.version` in `hello`. The approximate name of the area
+  moves there too, from under the area field: both stay visible when the panel is folded.
 - Places for the area (lot 23, D26), feature `geocode` (default), with
   [geohash-lookup](https://github.com/wvmscs/geohash-lookup) `v0.1.1`: the command line's
   area and the page's area field take `#u09t`, a place or an IP address (`--geoip-db`, the
