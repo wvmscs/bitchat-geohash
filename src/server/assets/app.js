@@ -672,11 +672,9 @@ function buildPanel() {
     const folded = panel.classList.toggle("folded");
     toggle.textContent = folded ? "▸" : "▾";
   });
-  // On the title's line (lot 24): the version, the approximate name of the
-  // watched area (lot 23), which stay visible when the panel is folded.
+  // On the title's line (lot 24): the version.
   ui.version = el("span", "version muted small");
-  ui.place = el("span", "place muted small");
-  head.append(el("h1", null, "BitChat geohash activity"), ui.version, ui.place, toggle);
+  head.append(el("h1", null, "BitChat geohash activity"), ui.version, toggle);
   // On a phone the map comes first: the panel starts folded.
   if (window.innerWidth < 600) {
     panel.classList.add("folded");
@@ -686,7 +684,10 @@ function buildPanel() {
   ui.link = el("div", "link");
   ui.linkText = el("span");
   ui.start = el("span", "muted");
-  ui.link.append(el("span", "dot"), ui.linkText, ui.start);
+  // After the area, the approximate name of it (lot 23), also visible when
+  // the panel is folded.
+  ui.place = el("span", "place muted small");
+  ui.link.append(el("span", "dot"), ui.linkText, ui.start, ui.place);
   ui.tabs = el("div", "warn",
     "too many tabs open on this server: close one, or enable TLS (HTTP/2)");
 
@@ -804,7 +805,7 @@ function updateWatch() {
 }
 
 // The area being changed to (`null`: no more): shown at once, in the field
-// and on the title's line, which stays visible when the panel is folded.
+// and on the area's line, which stays visible when the panel is folded.
 function setChanging(changing) {
   const was = state.changing;
   state.changing = changing;

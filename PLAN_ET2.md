@@ -534,6 +534,9 @@ geohash activity », avec la version (7 caractères du commit si non versionné)
 - [x] `VERSION`, `params.version` ; page : version et nom dans l'en-tête du panneau (nom tronqué
       s'il est long, entier en infobulle).
 - [x] Test de serveur ; vérifié dans le navigateur (`ff1f009`, « ≈ Hauts-de-Seine… »).
+- [x] Retour de l'utilisateur (capture) : sur la ligne du titre il ne restait pas de place pour
+      le nom. Le nom passe sur la ligne suivante, après la cellule (« live · #u09t ≈ … ») ; la
+      version reste à côté du titre.
 
 ### Lot 25 : changement de zone annoncé tout de suite ✅
 
@@ -545,7 +548,7 @@ carte se met à jour immédiatement, geohash et bouton Watch indiquant le traite
       venu : rien pour un refus immédiat ni pour la zone déjà surveillée. Sans changement côté
       console : elle passe déjà par `POST /api/area`.
 - [x] Page : champ sur la nouvelle cellule, bouton « ⏳ changing… » désactivé, « ⏳ #cellule… » sur
-      la ligne du titre, jusqu'au `hello` de la nouvelle zone ; retour en arrière si ça échoue.
+      la ligne de la zone, jusqu'au `hello` de la nouvelle zone ; retour en arrière si ça échoue.
 - [x] Tests : modèle, serveur.
 
 ## Décisions
@@ -637,3 +640,4 @@ carte se met à jour immédiatement, geohash et bouton Watch indiquant le traite
 | 30/10/2026 | 23 | Zone donnée par un lieu ou une IP et nom approximatif de la zone (D26), feature `geocode` avec `geohash-lookup` `v0.1.1`, à la demande de l'utilisateur. 159 tests Rust (111 sans la feature), 11 JS ; clippy propre dans les trois configurations. Essai réel : « Rue de Rivoli, Paris » → `#u09tv`, « Tokyo » → `xn`. |
 | 30/10/2026 | 24 | Version et nom de la zone sur la ligne du titre, à la demande de l'utilisateur. Vérifié dans le navigateur. |
 | 30/10/2026 | 25 | Changement de zone annoncé tout de suite à toutes les pages, à la demande de l'utilisateur. 161 tests. Console sur la carte, `spey3` : carte à jour en 180 ms, nouvelle zone à 720 ms. |
+| 30/10/2026 | 24 | Nom de la zone déplacé après la cellule (« live · #u09t ≈ … »), retour de l'utilisateur : plus de place sur la ligne du titre. |
