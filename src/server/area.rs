@@ -112,8 +112,14 @@ impl Holder {
     }
 
     /// Watches `geohash` instead of the current area. Returns the new
-    /// configuration; unchanged when it is already the area.
-    pub(crate) async fn change(&self, geohash: &str) -> Result<MonitorConfig> {
+    /// configuration; unchanged when it is already the area. `announce` gets
+    /// the checked area when the change really starts, once earlier changes
+    /// are over: what can be refused at once is never announced.
+    pub(crate) async fn change(
+        &self,
+        geohash: &str,
+        announce: impl FnOnce(&str),
+    ) -> Result<MonitorConfig> {
         let _one = self.changing.lock().await;
         let relaunch = self.relaunch.as_ref().ok_or(Error::AreaFixed)?;
         let old = self.config();
@@ -123,6 +129,7 @@ impl Holder {
         if config.start == old.start {
             return Ok(old);
         }
+        announce(&config.start);
         // Not for a second time: they were applied at the start.
         config.reinstate_all = false;
         config.forget_descents = false;

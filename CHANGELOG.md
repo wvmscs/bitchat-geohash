@@ -3,6 +3,10 @@
 ## [Unreleased]
 
 ### Added
+- The area change shows at once on every page (lot 25), whoever asks (the console over the
+  map, another tab): SSE event `area` and `changing` in `hello`; the field takes the new cell,
+  the button says "⏳ changing…", and the title line "⏳ #cell…", visible when the panel is
+  folded, until the new `hello`, or back if the change fails.
 - The version on the panel's title line (lot 24): the `v*` tag of the build, else the first 7
   characters of its commit (`build.rs`, `BITCHAT_BUILD_VERSION` when packaging from a copy
   without `.git`), `VERSION`, `params.version` in `hello`. The approximate name of the area

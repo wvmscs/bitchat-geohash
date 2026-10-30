@@ -257,6 +257,14 @@ pub(crate) async fn reinstate(
     Ok(Json(json!({ "reinstated": back })))
 }
 
+/// Tells the pages which area is being changed to (`None`: no more).
+pub(crate) fn announce_area(live: &Live, changing: Option<String>) {
+    let mut published = live.published.lock().expect("not poisoned");
+    if let Some(push) = published.set_changing(changing) {
+        let _ = live.tx.send(Arc::new(push));
+    }
+}
+
 /// `POST /api/area {"geohash": "u09t"}`: watches that area instead (lot 19).
 /// Answers once the new area is watched; the pages get a new `hello`.
 /// With places (lot 23), `"geohash"` may also be `#u09t`, a place or an IP
@@ -284,9 +292,18 @@ pub(crate) async fn area(
     #[cfg(not(feature = "geocode"))]
     let (geohash, place) = (body.geohash, None::<()>);
     tracing::info!(%geohash, "command: area");
-    let config = s.holder.change(&geohash).await.inspect_err(|e| {
-        tracing::info!(%geohash, error = %e, "area change refused");
-    })?;
+    // Every page shows the change at once, whoever asked (the console over
+    // the map, another tab), not only when the new area is there (lot 25).
+    let config = s
+        .holder
+        .change(&geohash, |area| {
+            announce_area(&s.live, Some(area.to_owned()))
+        })
+        .await
+        .inspect_err(|e| {
+            tracing::info!(%geohash, error = %e, "area change refused");
+            announce_area(&s.live, None);
+        })?;
     Ok(Json(
         json!({ "start": config.start, "depth": config.depth, "place": place }),
     ))

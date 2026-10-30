@@ -31,6 +31,9 @@ export function el(tag, cls, text) {
 const state = {
   params: null,
   seq: null,
+  // The area being changed to (lot 25), and a change asked from this page.
+  changing: null,
+  asking: false,
   cells: new Map(),   // geohash -> cell view
   relays: [],
   status: null,
@@ -751,17 +754,18 @@ function buildPanel() {
   ui.area.spellcheck = false;
   const watch = el("button", null, "Watch");
   const areaResult = el("span", "warn small");
+  ui.watch = watch;
   const changeArea = async () => {
     // A place or an IP address too, when the server looks them up (lot 23).
     const typed = typedArea(ui.area.value);
     const geohash = state.params && state.params.geocode ? typed : typed.toLowerCase();
     if (!geohash || (state.params && geohash === state.params.start)) return;
-    watch.disabled = true;
-    watch.textContent = "changing…";
+    state.asking = true;
+    updateWatch();
     areaResult.textContent = "";
     const { ok, data } = await command("/api/area", { geohash });
-    watch.disabled = false;
-    watch.textContent = "Watch";
+    state.asking = false;
+    updateWatch();
     if (!ok) areaResult.textContent = refusalText(data);
     // A place typed: the field shows the cell it gave (lot 23).
     else if (data && data.start) ui.area.value = data.start;
@@ -789,6 +793,33 @@ function buildPanel() {
   body.append(area, ui.crumbs, ui.stats, ui.reinstateAll, controls, legend, el("div", "note muted",
     "Presences are not comparable between levels: the apps send heartbeats at levels 2, 4 and 5 only."));
   panel.append(head, ui.link, ui.tabs, body);
+}
+
+// The Watch button while the area changes, asked from this page or from
+// elsewhere (the console over the map, another tab; lot 25).
+function updateWatch() {
+  const busy = state.asking || state.changing !== null;
+  ui.watch.disabled = busy;
+  ui.watch.textContent = busy ? "⏳ changing…" : "Watch";
+}
+
+// The area being changed to (`null`: no more): shown at once, in the field
+// and on the title's line, which stays visible when the panel is folded.
+function setChanging(changing) {
+  const was = state.changing;
+  state.changing = changing;
+  updateWatch();
+  ui.area.classList.toggle("changing", changing !== null);
+  if (changing !== null) {
+    if (document.activeElement !== ui.area || state.asking) ui.area.value = changing;
+    ui.place.dataset.for = "";
+    ui.place.textContent = `⏳ #${changing}…`;
+    ui.place.title = `the map is changing to #${changing}`;
+  } else if (was !== null && state.params) {
+    // Failed: back to the area still watched, unless something else was typed.
+    if (ui.area.value === was) ui.area.value = state.params.start;
+    nameArea(state.params.start);
+  }
 }
 
 function updatePanel() {
@@ -891,7 +922,8 @@ function onHello(d) {
   ui.area.placeholder = d.params.geocode ? "area: u09t, a place or an IP address" : "area, e.g. u09t";
   ui.version.textContent = d.params.version;
   ui.version.title = "version of this bitchat-geohash";
-  nameArea(d.params.start);
+  setChanging(d.changing ?? null);
+  if (d.changing == null) nameArea(d.params.start);
   if (!tiles) {
     tiles = L.tileLayer(d.params.tiles, {
       maxZoom: 19,
@@ -959,6 +991,7 @@ function connect() {
     clearTimeout(helloTimer);
     onHello(JSON.parse(e.data));
   });
+  source.addEventListener("area", e => delta(e, d => setChanging(d.changing)));
   source.addEventListener("cells", e => delta(e, d => {
     for (const c of d.cells) upsert(c);
     rescale();

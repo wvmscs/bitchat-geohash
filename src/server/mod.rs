@@ -356,6 +356,7 @@ async fn push_loop(
                                     && let Err(e) = reset(&m, &holder.config(), &live).await
                                 {
                                     tracing::warn!(error = %e, "cannot read the new monitor state");
+                                    api::announce_area(&live, None);
                                 }
                                 continue 'monitor;
                             }
@@ -414,7 +415,13 @@ async fn reset(monitor: &Monitor, config: &MonitorConfig, live: &Live) -> Result
     // The sequence goes on: a page that missed the `hello` sees a gap and
     // reconnects.
     let seq = published.seq();
+    // Another change may have started since: the new `hello` says so.
+    let changing = published
+        .changing()
+        .filter(|g| *g != config.start)
+        .map(str::to_owned);
     *published = Published::starting_at(params, seq);
+    published.set_changing(changing);
     published.update(cells, relays, status);
     published.update_meshes(meshes);
     let _ = live.tx.send(Arc::new(published.hello()));

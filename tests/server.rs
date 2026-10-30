@@ -563,6 +563,28 @@ async fn the_area_changes_and_the_pages_start_over() {
     r.stop().await;
 }
 
+// Lot 25: the pages are told at once, whoever asks; not for what is refused
+// at once, nor for the area already watched.
+#[tokio::test]
+async fn the_pages_are_told_when_the_area_starts_changing() {
+    let r = Running::start_with(|_, _| {}, true).await;
+    let mut sse = SseReader::open(&r.url("/api/events")).await;
+    let (_, _, hello) = sse.next().await.unwrap();
+    assert_eq!(hello["changing"], Value::Null);
+    let (status, _) = r.post("/api/area", r#"{"geohash":"u0a"}"#).await;
+    assert_eq!(status, 400);
+    let (status, _) = r.post("/api/area", r#"{"geohash":"u09t"}"#).await;
+    assert_eq!(status, 200);
+    let (status, _) = r.post("/api/area", r#"{"geohash":"u09w"}"#).await;
+    assert_eq!(status, 200);
+    let (seq, area) = sse.until("area", |_| true).await;
+    assert_eq!(area["changing"], "u09w");
+    let (next, hello) = sse.until("hello", |d| d["params"]["start"] == "u09w").await;
+    assert!(next > seq, "{next} after {seq}");
+    assert_eq!(hello["changing"], Value::Null);
+    r.stop().await;
+}
+
 #[tokio::test]
 async fn an_area_that_cannot_be_watched_changes_nothing() {
     let r = Running::start_with(|c, _| c.max_channels = 40, true).await;

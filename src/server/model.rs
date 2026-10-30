@@ -311,6 +311,8 @@ pub enum Push {
         meshes: Vec<MeshView>,
         relays: Vec<RelayView>,
         status: StatusView,
+        /// The area being changed to, if any (lot 25).
+        changing: Option<String>,
     },
     /// Cells new or changed since the previous message.
     Cells {
@@ -337,6 +339,12 @@ pub enum Push {
         seq: u64,
         status: StatusView,
     },
+    /// The watched area is changing to this one (lot 25); `None`: the change
+    /// failed. A success ends with the new area's `hello`.
+    Area {
+        seq: u64,
+        changing: Option<String>,
+    },
 }
 
 impl Push {
@@ -349,6 +357,7 @@ impl Push {
             Push::Meshes { .. } => "meshes",
             Push::Relays { .. } => "relays",
             Push::Status { .. } => "status",
+            Push::Area { .. } => "area",
         }
     }
 
@@ -359,7 +368,8 @@ impl Push {
             | Push::Removed { seq, .. }
             | Push::Meshes { seq, .. }
             | Push::Relays { seq, .. }
-            | Push::Status { seq, .. } => *seq,
+            | Push::Status { seq, .. }
+            | Push::Area { seq, .. } => *seq,
         }
     }
 
@@ -379,6 +389,7 @@ pub struct Published {
     meshes: Vec<MeshView>,
     relays: Vec<RelayView>,
     status: Option<StatusView>,
+    changing: Option<String>,
 }
 
 impl Published {
@@ -396,11 +407,31 @@ impl Published {
             meshes: Vec::new(),
             relays: Vec::new(),
             status: None,
+            changing: None,
         }
     }
 
     pub fn params(&self) -> &Params {
         &self.params
+    }
+
+    /// The area being changed to, if any.
+    pub fn changing(&self) -> Option<&str> {
+        self.changing.as_deref()
+    }
+
+    /// Records the area being changed to, and the message that says so;
+    /// nothing when it is already known.
+    pub fn set_changing(&mut self, changing: Option<String>) -> Option<Push> {
+        if self.changing == changing {
+            return None;
+        }
+        self.seq += 1;
+        self.changing = changing.clone();
+        Some(Push::Area {
+            seq: self.seq,
+            changing,
+        })
     }
 
     /// Sequence number of the last message.
@@ -417,6 +448,7 @@ impl Published {
             meshes: self.meshes.clone(),
             relays: self.relays.clone(),
             status: self.status.clone().unwrap_or_default(),
+            changing: self.changing.clone(),
         }
     }
 

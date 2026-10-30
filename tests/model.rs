@@ -412,3 +412,15 @@ fn meshes_are_sent_whole_when_they_change() {
     );
     assert_eq!(hello["params"]["mesh_levels"], json!([2, 3, 4, 5, 6]));
 }
+
+#[test]
+fn the_area_being_changed_to_is_sequenced_and_in_hello() {
+    let mut p = Published::new(params());
+    let push = p.set_changing(Some("u09w".into())).unwrap();
+    assert_eq!(push.event(), "area");
+    assert_eq!(push.seq(), 1);
+    assert_eq!(p.set_changing(Some("u09w".into())), None, "already known");
+    assert!(p.hello().to_json().contains(r#""changing":"u09w""#));
+    assert_eq!(p.set_changing(None).unwrap().seq(), 2);
+    assert!(p.hello().to_json().contains(r#""changing":null"#));
+}

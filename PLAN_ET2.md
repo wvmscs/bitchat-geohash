@@ -28,6 +28,7 @@ Règle : seuls les fichiers de `bitchat-geohash/` sont modifiés ; le dépôt re
 | 22 | Derrière un proxy TLS (Cloudflare Tunnel, NGINX, Caddy) : contrôle par requête et sonde au démarrage | ✅ |
 | 23 | Zone donnée par un lieu ou une IP (`geohash-lookup`, feature `geocode`), nom approximatif de la zone | ✅ |
 | 24 | Version (tag ou commit) et nom de la zone sur la ligne du titre | ✅ |
+| 25 | Changement de zone annoncé tout de suite à toutes les pages (`area`, `changing`) | ✅ |
 
 La numérotation continue celle de l'étape 1. Ordre : 10 → 11 → 11 bis → 12 sont côté librairie ;
 13 dépend de 12 ; 13 bis dépend de 13 ; 14 dépend de 13 ; 15 et 16 sont indépendants entre eux ; 17 peut démarrer
@@ -534,6 +535,19 @@ geohash activity », avec la version (7 caractères du commit si non versionné)
       s'il est long, entier en infobulle).
 - [x] Test de serveur ; vérifié dans le navigateur (`ff1f009`, « ≈ Hauts-de-Seine… »).
 
+### Lot 25 : changement de zone annoncé tout de suite ✅
+
+Demande de l'utilisateur (30/10/2026) : quand la console demande un changement de cellule, la
+carte se met à jour immédiatement, geohash et bouton Watch indiquant le traitement en cours.
+
+- [x] Le serveur annonce la zone (événement SSE `area`, numéroté ; `changing` dans `hello`, pour
+      un onglet qui se connecte pendant le changement), une fois la demande vérifiée et son tour
+      venu : rien pour un refus immédiat ni pour la zone déjà surveillée. Sans changement côté
+      console : elle passe déjà par `POST /api/area`.
+- [x] Page : champ sur la nouvelle cellule, bouton « ⏳ changing… » désactivé, « ⏳ #cellule… » sur
+      la ligne du titre, jusqu'au `hello` de la nouvelle zone ; retour en arrière si ça échoue.
+- [x] Tests : modèle, serveur.
+
 ## Décisions
 
 | # | Question | Proposition | État |
@@ -622,3 +636,4 @@ geohash activity », avec la version (7 caractères du commit si non versionné)
 | 29/10/2026 | — | Version 0.3.1 (tag `v0.3.1`), avant l'ouverture au public, à la demande de l'utilisateur. |
 | 30/10/2026 | 23 | Zone donnée par un lieu ou une IP et nom approximatif de la zone (D26), feature `geocode` avec `geohash-lookup` `v0.1.1`, à la demande de l'utilisateur. 159 tests Rust (111 sans la feature), 11 JS ; clippy propre dans les trois configurations. Essai réel : « Rue de Rivoli, Paris » → `#u09tv`, « Tokyo » → `xn`. |
 | 30/10/2026 | 24 | Version et nom de la zone sur la ligne du titre, à la demande de l'utilisateur. Vérifié dans le navigateur. |
+| 30/10/2026 | 25 | Changement de zone annoncé tout de suite à toutes les pages, à la demande de l'utilisateur. 161 tests. Console sur la carte, `spey3` : carte à jour en 180 ms, nouvelle zone à 720 ms. |
