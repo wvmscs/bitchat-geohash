@@ -853,9 +853,10 @@ function showStrategy(params) {
   ui.strategy.disabled = !params.strategy_change;
   ui.strategy.title = params.strategy_change ? "" : "a public map keeps its relay strategy";
   ui.strategyNote.textContent = appsMode(params)
-    ? "Listening where the bitchat apps write: the counts are the people in each cell."
-    : "Listening only where this strategy reads: the counts are the people a phone following it "
-      + "would reach today, the phones themselves following the apps.";
+    ? "Relays chosen today by bitchat iOS and Android. In each cell, the badge shows whether "
+      + "iOS and Android phones exchange messages."
+    : "Relays this strategy would choose. In each cell, the badges show whether a phone using it "
+      + "would exchange messages with bitchat iOS and Android as released today.";
 }
 
 // The Watch button while the area changes, asked from this page or from
