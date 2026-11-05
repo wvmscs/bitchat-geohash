@@ -13,6 +13,9 @@
   released, unchanged (lot 28, D29): a green, red or grey badge per app in the cell's details,
   and in the panel the number of watched cells that exchange. Under the apps' strategy, iOS
   with Android.
+
+- "scenarios (PDF)" beside the strategy selector: the scenarios and our conclusions, the PDF of
+  the latest public release (`scenarios.pdf`).
 - The strategy list shows every strategy of geohash-relays: "Today (AS)", A0, A1, "AirHop
   (A8)", and A2 to A6 greyed out with what the map lacks for each.
 
