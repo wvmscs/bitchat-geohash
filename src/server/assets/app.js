@@ -698,7 +698,7 @@ function tooltip(cell) {
 // open drop-down list stays open across updates.
 const panel = document.getElementById("panel");
 const ui = {};
-const SCENARIOS_PDF = "https://github.com/wvmscs/bitchat-launcher/releases/latest/download/scenarios.pdf";
+const SCENARIOS = "https://github.com/wvmscs/bitchat-launcher/releases/latest/download/scenarios.md";
 
 function buildPanel() {
   const head = el("div", "head");
@@ -829,9 +829,9 @@ function buildPanel() {
     ui.strategy.disabled = !(state.params && state.params.strategy_change);
   });
   ui.strategyNote = el("div", "note muted");
-  // The scenarios and our conclusions: the PDF of the latest release.
-  const scenarios = el("a", "small", "scenarios (PDF)");
-  scenarios.href = SCENARIOS_PDF;
+  // The scenarios and our conclusions: the document of the latest release.
+  const scenarios = el("a", "small", "scenarios");
+  scenarios.href = SCENARIOS;
   scenarios.target = "_blank";
   scenarios.rel = "noopener noreferrer";
   scenarios.title = "What each strategy changes, and what we conclude";

@@ -601,21 +601,13 @@ Retour de l'utilisateur sur le snapshot du 05/11/2026.
       la liste : A2 à A6 grisées, avec ce qui manque à la carte pour chacune.
 - [x] Tests : `reach.rs`, `tests/server.rs`, `tests/model.rs`, JS.
 
-### Lot 29 : republieur (A4) ⬜ (spécification en relecture avec l'utilisateur)
-
-Relecture de `docs/scenarios.md` (05/11/2026) : A4 n'est pas un choix de relais, son effet
-dépend des cellules que suivent les republieurs. Décision de l'utilisateur (06/11/2026) :
-rédiger les spécifications d'un republieur que nous hébergerons un temps, pour voir s'il peut
-servir de pont de migration entre `AS` et une autre stratégie. Brouillon à relire avant tout
-code ; la carte n'en montrera l'effet qu'ensuite.
-
 ### Lot 30 : lien vers le document des scénarios ✅
 
 Décision de l'utilisateur (06/11/2026) : le document des scénarios n'est pas copié dans les
-outils ; `make release` (bitchat-web) en fait un PDF attaché à chaque release publique, et la
-carte l'ouvre depuis la dernière (`releases/latest/download/scenarios.pdf`).
+outils ; `make release` (bitchat-web) l'attache tel quel (`.md`) à chaque release publique, et
+la carte l'ouvre depuis la dernière (`releases/latest/download/scenarios.md`).
 
-- [x] Lien « scenarios (PDF) » à côté du sélecteur de stratégie (nouvel onglet).
+- [x] Lien « scenarios » à côté du sélecteur de stratégie (nouvel onglet).
 
 ## Décisions
 
