@@ -63,14 +63,14 @@ enough: `--behind-proxy https://map.example.org`. The map then accepts only what
 through the proxy in HTTPS, and checks at start that the name leads to it; the configurations
 are in [docs/behind-proxy.md](docs/behind-proxy.md).
 
-By default the map listens where the bitchat apps write (iOS and Android, each with its
-list and rule). `--strategy airhop|a0|a1`, or the selector under the area in the panel, makes
-it listen where another relay strategy of
+By default the map shows the relays chosen today by bitchat iOS and Android, each with its list
+and rule. `--strategy airhop|a0|a1`, or the selector under the area in the panel, shows the
+relays another strategy of
 [geohash-relays](https://github.com/wvmscs/geohash-relays/blob/strategies/docs/clients.md)
-reads: the phones still follow the apps, so the counts then show the people a phone following
-that strategy would reach today. In each cell, a green or red badge says whether such a phone
-exchanges messages with bitchat iOS and with bitchat Android as released, unchanged. A public
-map keeps the strategy it was started with.
+would choose. In each cell, green or red badges show whether a phone using it would exchange
+messages with bitchat iOS and with bitchat Android as released today (under the apps' own
+strategy: whether iOS and Android phones exchange). A public map keeps the strategy it was
+started with.
 
 On the map:
 
