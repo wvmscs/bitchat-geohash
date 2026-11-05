@@ -53,8 +53,8 @@ impl StrategyKind {
     /// What the page shows.
     pub fn label(self) -> &'static str {
         match self {
-            StrategyKind::Apps => "Today: bitchat iOS + Android",
-            StrategyKind::Airhop => "AirHop: 10 nearest",
+            StrategyKind::Apps => "Today (AS): bitchat iOS + Android",
+            StrategyKind::Airhop => "AirHop (A8): 10 nearest",
             StrategyKind::A0 => "A0: one list, write 8, read 5",
             StrategyKind::A1 => "A1: rendezvous hashing",
         }
@@ -89,6 +89,36 @@ impl StrategyKind {
         }
     }
 }
+
+/// The other strategies of geohash-relays, in the page's list but not
+/// selectable: what each needs that the map does not have. Name, label, why.
+pub const NOT_AVAILABLE: [(&str, &str, &str); 5] = [
+    (
+        "a2",
+        "A2: directory from NIP-66 monitors",
+        "needs the reports of trusted NIP-66 monitors that test writes through Tor; few exist",
+    ),
+    (
+        "a3",
+        "A3: relays announced in presences",
+        "needs presences that announce their relays: a change of the apps, none sends them yet",
+    ),
+    (
+        "a4",
+        "A4: republishers",
+        "not a relay choice: peers that copy events between the apps' sets (bitchat-console --republish)",
+    ),
+    (
+        "a5",
+        "A5: federation of synchronised relays",
+        "needs relays that synchronise with each other (NIP-77); no federation runs yet",
+    ),
+    (
+        "a6",
+        "A6: qualified relays only",
+        "a filter added to another strategy: the map already sets aside the relays its probes find dead",
+    ),
+];
 
 impl std::fmt::Display for StrategyKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

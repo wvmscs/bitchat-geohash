@@ -10,7 +10,7 @@
 // Strings from relays or relay lists only ever go through `textContent`.
 
 import {
-  ago, ancestors, appsLabel, appsMode, belowSummary, cellsMeeting, childLevel, childrenOf, fillColour,
+  ago, ancestors, appsLabel, appsMode, belowSummary, reachBadges, reachSummary, cellsMeeting, childLevel, childrenOf, fillColour,
   formatHash, levelCounts, levelLabel, maxValue, parseHash, rank, refusalText, rejectedTotal, typedArea,
   ringAnchors, ringed, scaleValue, PALETTE,
 } from "./view.js";
@@ -605,6 +605,21 @@ function openMenu(geohash, latlng) {
 
 // --- Tooltip ---------------------------------------------------------------
 
+// Green: phones following the strategy exchange here with the app as
+// released, unchanged; red: they do not (no working relay in common);
+// grey: that app's list is not loaded (lot 28).
+function reachLine(cell) {
+  const line = el("div", "reach");
+  for (const [label, ok] of reachBadges(cell.reach, appsMode(state.params))) {
+    const badge = el("span", "badge " + (ok === true ? "yes" : ok === false ? "no" : "unknown"));
+    badge.title = ok === true ? "messages go both ways, with the app unchanged"
+      : ok === false ? "no working relay in common: messages are lost between them"
+      : "this app's relay list is not loaded";
+    line.append(badge, document.createTextNode(label + " "));
+  }
+  return line;
+}
+
 function tooltip(cell) {
   const box = el("div", "tip");
   const head = el("div", "tip-head");
@@ -623,6 +638,7 @@ function tooltip(cell) {
   const now = Date.now() / 1000;
   box.append(el("div", "muted",
     cell.last_seen ? "last event " + ago(now - cell.last_seen) : "no event yet"));
+  box.append(reachLine(cell));
 
   const table = el("table", "relays");
   const tr = el("tr");
@@ -824,8 +840,13 @@ function buildPanel() {
 // The strategy listened with, and what its counts mean (lot 27).
 function showStrategy(params) {
   ui.strategy.replaceChildren(...params.strategies.map(s => {
-    const o = el("option", null, s.label);
+    const o = el("option", null, s.label + (s.unavailable ? " (not available)" : ""));
     o.value = s.name;
+    // Listed, not selectable: what the map lacks for it.
+    if (s.unavailable) {
+      o.disabled = true;
+      o.title = s.unavailable;
+    }
     return o;
   }));
   ui.strategy.value = params.strategy;
@@ -881,6 +902,12 @@ function updatePanel() {
       el("div", null, `connections: ${s.connections_up} / ${s.connections} open`),
       el("div", null, `events not counted: ${rejectedTotal(s)}`),
     );
+    // How many watched cells exchange with the apps as released (lot 28).
+    for (const [label, [ok, known]] of reachSummary(state.cells.values(), appsMode(state.params))) {
+      ui.stats.append(el("div", null, known
+        ? `${label} (release, unchanged): exchange in ${ok} of ${known} cells`
+        : `${label}: list not loaded`));
+    }
   }
 
   ui.reinstateAll.hidden = !(state.status && state.status.retired > 0);

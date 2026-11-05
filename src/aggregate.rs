@@ -99,6 +99,9 @@ pub struct CellStats {
     pub relays: Vec<CellRelay>,
     /// Relays chosen by only one of the two apps.
     pub divergence: Vec<String>,
+    /// Whether the strategy listened with exchanges with the reference apps
+    /// (lot 28); set by the monitor.
+    pub reach: Option<crate::reach::Reach>,
 }
 
 /// Activity of the channels inside a mesh (a geohash prefix, precision 3
@@ -326,6 +329,7 @@ impl Aggregator {
                     last_seen: cell.last_seen,
                     relays,
                     divergence,
+                    reach: None,
                     geohash,
                 }
             })

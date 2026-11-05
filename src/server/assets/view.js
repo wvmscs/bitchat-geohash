@@ -203,3 +203,27 @@ export function cellsMeeting(cells, level, [[s, w], [n, e]]) {
     return c.level === level && cs < n && cn > s && cw < e && ce > w;
   });
 }
+
+// The reference apps as released (lot 28): which badges a cell gets, as
+// [label, true | false | null]. Under the apps' strategy, iOS with Android.
+export function reachBadges(reach, apps) {
+  if (!reach) return [];
+  if (apps) return [["bitchat iOS ↔ Android", reach.ios]];
+  return [["bitchat iOS", reach.ios], ["bitchat Android", reach.android]];
+}
+
+// Over the watched cells: per badge, [cells that exchange, cells known].
+export function reachSummary(cells, apps) {
+  const out = new Map();
+  for (const c of cells) {
+    if (!c.watched) continue;
+    for (const [label, ok] of reachBadges(c.reach, apps)) {
+      if (!out.has(label)) out.set(label, [0, 0]);
+      if (ok === null || ok === undefined) continue;
+      const n = out.get(label);
+      n[1] += 1;
+      if (ok) n[0] += 1;
+    }
+  }
+  return [...out.entries()];
+}

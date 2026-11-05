@@ -36,6 +36,7 @@ use crate::plan::{ListenPlan, PlanConfig};
 use crate::probe::{
     PROBE_CONCURRENCY, PROBE_TIMEOUT, Status, Verdict, probe_new_relays, probe_where,
 };
+use crate::reach::CellRelays;
 use crate::store::{ChannelState, RelayListLoad, Store, StoreWriter, Write, sha256_hex};
 use crate::strategy::StrategyKind;
 
@@ -612,6 +613,7 @@ impl Monitor {
             probed_tx,
             events: events.clone(),
             previews: BTreeMap::new(),
+            cell_relays: BTreeMap::new(),
         };
         // The other relays, in the background: dead ones are set aside as
         // their verdicts come (lot 20).
@@ -739,6 +741,9 @@ struct State {
     events: broadcast::Sender<MonitorEvent>,
     /// Cell -> its preview (D21).
     previews: BTreeMap<String, Preview>,
+    /// Cell -> its relays and the reference apps', for the reach (lot 28);
+    /// emptied when the lists change.
+    cell_relays: BTreeMap<String, CellRelays>,
 }
 
 /// Channels listened to for a while below a cell (D21).
@@ -909,6 +914,7 @@ impl State {
         };
         self.ios = ios;
         self.android = android;
+        self.cell_relays.clear();
         // Carry the retirements and the relays set aside over.
         let retired = self.plan.retired();
         plan.retire(&retired.iter().map(String::as_str).collect::<Vec<_>>());
@@ -1169,6 +1175,47 @@ impl State {
         self.emit(MonitorEvent::RelaysChanged);
     }
 
+    /// Whether each cell's phones exchange with the reference apps (lot 28),
+    /// on the relays not found dead.
+    fn set_reach(&mut self, cells: &mut [CellStats]) {
+        let missing: Vec<String> = cells
+            .iter()
+            .map(|c| c.geohash.clone())
+            .filter(|g| !self.cell_relays.contains_key(g))
+            .collect();
+        if !missing.is_empty() {
+            let chooser = self
+                .config
+                .strategy
+                .chooser(self.ios.as_ref(), self.android.as_ref());
+            for g in missing {
+                match CellRelays::of(
+                    chooser.as_ref(),
+                    self.ios.as_ref(),
+                    self.android.as_ref(),
+                    &g,
+                ) {
+                    Ok(r) => {
+                        self.cell_relays.insert(g, r);
+                    }
+                    Err(e) => tracing::debug!(cell = %g, error = %e, "no reach"),
+                }
+            }
+        }
+        let apps = self.config.strategy == StrategyKind::Apps;
+        let alive = |url: &str| {
+            self.verdicts
+                .get(url)
+                .is_none_or(|v| v.status.worth_listening())
+        };
+        for c in cells {
+            c.reach = self
+                .cell_relays
+                .get(&c.geohash)
+                .map(|r| r.reach(apps, alive));
+        }
+    }
+
     fn relays(&self) -> Vec<RelayInfo> {
         let listened: std::collections::BTreeSet<String> = self.plan.relays().into_iter().collect();
         let mut out: BTreeMap<String, RelayInfo> = BTreeMap::new();
@@ -1333,6 +1380,7 @@ impl State {
                         c.preview = true;
                     }
                 }
+                self.set_reach(&mut cells);
                 let _ = reply.send(cells);
             }
             Command::Mesh(precision, reply) => {

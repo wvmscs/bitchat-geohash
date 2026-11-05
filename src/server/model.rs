@@ -69,6 +69,9 @@ pub struct CellView {
     pub relays: Vec<CellRelayView>,
     /// Relays chosen by only one of the two apps.
     pub divergence: Vec<String>,
+    /// Exchange with the reference apps as released (lot 28): under the
+    /// apps' strategy, iOS with Android (both fields alike).
+    pub reach: Option<ReachView>,
 }
 
 impl From<&CellStats> for CellView {
@@ -85,8 +88,20 @@ impl From<&CellStats> for CellView {
             last_seen: c.last_seen,
             relays: c.relays.iter().map(CellRelayView::from).collect(),
             divergence: c.divergence.clone(),
+            reach: c.reach.map(|r| ReachView {
+                ios: r.ios,
+                android: r.android,
+            }),
         }
     }
+}
+
+/// Whether the phones of a cell exchange with bitchat iOS and Android as
+/// released (`null`: that list is not loaded).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct ReachView {
+    pub ios: Option<bool>,
+    pub android: Option<bool>,
 }
 
 /// A relay chosen for a cell.
@@ -283,11 +298,40 @@ pub struct Params {
     pub strategy_change: bool,
 }
 
+/// Every strategy of geohash-relays, in their order (AS, A0 to A6, then
+/// AirHop's A8): the ones the map cannot listen with are not selectable.
+fn strategy_choices() -> Vec<StrategyChoice> {
+    use crate::strategy::{NOT_AVAILABLE, StrategyKind};
+    let on = |k: StrategyKind| StrategyChoice {
+        name: k.name(),
+        label: k.label(),
+        unavailable: None,
+    };
+    let mut out = vec![
+        on(StrategyKind::Apps),
+        on(StrategyKind::A0),
+        on(StrategyKind::A1),
+    ];
+    out.extend(
+        NOT_AVAILABLE
+            .iter()
+            .map(|&(name, label, why)| StrategyChoice {
+                name,
+                label,
+                unavailable: Some(why),
+            }),
+    );
+    out.push(on(StrategyKind::Airhop));
+    out
+}
+
 /// A relay strategy the page offers (lot 27).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct StrategyChoice {
     pub name: &'static str,
     pub label: &'static str,
+    /// Not selectable: what the map lacks for it.
+    pub unavailable: Option<&'static str>,
 }
 
 /// Mesh precisions of the mesh layer: every prefix length that can hold a
@@ -310,13 +354,7 @@ impl Params {
             geocode: false,
             version: crate::VERSION.to_owned(),
             strategy: config.strategy.name().to_owned(),
-            strategies: crate::strategy::StrategyKind::ALL
-                .into_iter()
-                .map(|k| StrategyChoice {
-                    name: k.name(),
-                    label: k.label(),
-                })
-                .collect(),
+            strategies: strategy_choices(),
             strategy_change: false,
         }
     }

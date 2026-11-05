@@ -131,3 +131,16 @@ test("URL view with meshes and relays", () => {
   assert.deepEqual(v.parseHash(h), { level: 3, scale: "participants", show: "meshes", relays: true });
   assert.deepEqual(v.parseHash("#show=x&relays=2"), {});
 });
+
+test("reach of the reference apps (lot 28)", () => {
+  assert.deepEqual(v.reachBadges(null, false), []);
+  assert.deepEqual(v.reachBadges({ ios: true, android: false }, true), [["bitchat iOS ↔ Android", true]]);
+  assert.deepEqual(v.reachBadges({ ios: true, android: null }, false),
+    [["bitchat iOS", true], ["bitchat Android", null]]);
+  const cells = [
+    { watched: true, reach: { ios: true, android: false } },
+    { watched: true, reach: { ios: false, android: null } },
+    { watched: false, reach: { ios: true, android: true } },
+  ];
+  assert.deepEqual(v.reachSummary(cells, false), [["bitchat iOS", [1, 2]], ["bitchat Android", [0, 1]]]);
+});

@@ -96,3 +96,9 @@ button:disabled { opacity: .5; cursor: default; }
 #panel .area .warn { flex-basis: 100%; }
 #panel .area input.changing { opacity: .6; }
 #panel .area select { flex: 1 1 140px; min-width: 0; font: inherit; font-size: 13px; }
+.reach { margin: 2px 0; font-size: 12px; }
+.reach .badge { display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+                margin: 0 4px 0 0; vertical-align: -1px; }
+.reach .badge.yes { background: var(--ok); }
+.reach .badge.no { background: var(--down); }
+.reach .badge.unknown { background: var(--unprobed); }

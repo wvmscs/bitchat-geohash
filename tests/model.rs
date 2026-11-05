@@ -14,6 +14,7 @@ use bitchat_geohash::listener::ConnState;
 use bitchat_geohash::monitor::{ConnectionStatus, Monitor, MonitorStatus, RelayInfo};
 use bitchat_geohash::nostr::Event;
 use bitchat_geohash::probe::Status;
+use bitchat_geohash::reach::Reach;
 use bitchat_geohash::server::model::*;
 use bitchat_geohash::store::Store;
 use bitchat_geohash::{KIND_GEO_MESSAGE, KIND_GEO_PRESENCE};
@@ -49,6 +50,10 @@ fn cell(geohash: &str, messages: u32, participants: Option<u32>) -> CellStats {
             },
         ],
         divergence: vec!["wss://b.example".into()],
+        reach: Some(Reach {
+            ios: Some(true),
+            android: None,
+        }),
     }
 }
 
@@ -71,7 +76,8 @@ fn cell_reference_json() {
                 {"url": "wss://a.example", "rank": 1, "ios": 1, "android": [2, 3], "status": "ok", "delivered": true},
                 {"url": "wss://b.example", "rank": 2, "ios": null, "android": [1], "status": null, "delivered": false}
             ],
-            "divergence": ["wss://b.example"]
+            "divergence": ["wss://b.example"],
+            "reach": {"ios": true, "android": null}
         })
     );
 }

@@ -9,6 +9,13 @@
   monitor again on the same area; refused on a public map. geohash-relays from the tag
   `strategies-2026.11.05` of its branch `strategies`.
 
+- For every strategy, whether each cell's phones exchange with bitchat iOS and Android as
+  released, unchanged (lot 28, D29): a green, red or grey badge per app in the cell's details,
+  and in the panel the number of watched cells that exchange. Under the apps' strategy, iOS
+  with Android.
+- The strategy list shows every strategy of geohash-relays: "Today (AS)", A0, A1, "AirHop
+  (A8)", and A2 to A6 greyed out with what the map lacks for each.
+
 ### Fixed
 - After an area change, a page could get only the new monitor's deltas, without the `hello`
   that starts it over, when the push loop found no monitor during the change.

@@ -146,6 +146,7 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
   iOS conflict check) re-exported from `geohash-relays`; list sources and download here.
 - `src/strategy.rs`: the relay strategy the map listens with (`StrategyKind`, D28): the
   apps' choice by default, or AirHop's, A0, A1 from `geohash-relays`.
+- `src/reach.rs`: whether a cell's phones exchange with the reference apps as released (D29).
 - `src/select.rs`: relay choice per channel (`closest`, `select_both`) from `geohash-relays`,
   wrapped to return this crate's `Error`. Fix selection bugs in `geohash-relays`, not here.
 - `src/channels.rs`: `Level`, channel enumeration.

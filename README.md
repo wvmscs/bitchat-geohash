@@ -68,7 +68,9 @@ list and rule). `--strategy airhop|a0|a1`, or the selector under the area in the
 it listen where another relay strategy of
 [geohash-relays](https://github.com/wvmscs/geohash-relays/blob/strategies/docs/clients.md)
 reads: the phones still follow the apps, so the counts then show the people a phone following
-that strategy would reach today. A public map keeps the strategy it was started with.
+that strategy would reach today. In each cell, a green or red badge says whether such a phone
+exchanges messages with bitchat iOS and with bitchat Android as released, unchanged. A public
+map keeps the strategy it was started with.
 
 On the map:
 

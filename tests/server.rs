@@ -815,9 +815,30 @@ async fn the_strategy_changes_and_the_pages_start_over() {
     let (_, _, hello) = sse.next().await.unwrap();
     assert_eq!(hello["params"]["strategy"], "apps");
     assert_eq!(hello["params"]["strategy_change"], true);
-    assert_eq!(hello["params"]["strategies"].as_array().unwrap().len(), 4);
+    let choices = hello["params"]["strategies"].as_array().unwrap();
+    assert_eq!(choices.len(), 9);
+    assert_eq!(choices[0]["label"], "Today (AS): bitchat iOS + Android");
+    assert_eq!(
+        choices
+            .iter()
+            .filter(|c| c["unavailable"].is_null())
+            .count(),
+        4
+    );
+    // iOS with Android needs both lists: this map has the iOS one only (lot 28).
+    let reach = &hello["cells"][0]["reach"];
+    assert!(
+        reach["ios"].is_null() && reach["android"].is_null(),
+        "{reach}"
+    );
     assert!(hello["relays"][0]["ios"] == true && hello["relays"][0]["strategy"] == false);
 
+    let (status, body) = r.post("/api/strategy", r#"{"strategy":"a3"}"#).await;
+    assert_eq!(
+        (status, &body["error"]),
+        (400, &json!("unknown_strategy")),
+        "not available"
+    );
     let (status, body) = r.post("/api/strategy", r#"{"strategy":"nope"}"#).await;
     assert_eq!((status, &body["error"]), (400, &json!("unknown_strategy")));
     let (status, body) = r.post("/api/strategy", r#"{"strategy":"A1"}"#).await;
@@ -826,6 +847,12 @@ async fn the_strategy_changes_and_the_pages_start_over() {
         .until("hello", |d| d["params"]["strategy"] == "a1")
         .await;
     assert_eq!(hello["params"]["start"], "u09t", "same area");
+    // A1's phone and an iOS phone share the one relay, which works.
+    assert_eq!(
+        hello["cells"][0]["reach"]["ios"], true,
+        "{}",
+        hello["cells"][0]
+    );
     let relay = &hello["relays"][0];
     assert!(
         relay["ios"] == false && relay["strategy"] == true,
