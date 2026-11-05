@@ -10,7 +10,7 @@
 // Strings from relays or relay lists only ever go through `textContent`.
 
 import {
-  ago, ancestors, appsLabel, belowSummary, cellsMeeting, childLevel, childrenOf, fillColour,
+  ago, ancestors, appsLabel, appsMode, belowSummary, cellsMeeting, childLevel, childrenOf, fillColour,
   formatHash, levelCounts, levelLabel, maxValue, parseHash, rank, refusalText, rejectedTotal, typedArea,
   ringAnchors, ringed, scaleValue, PALETTE,
 } from "./view.js";
@@ -345,12 +345,13 @@ function drawRelays() {
   for (const [r, i, n] of ringed(state.relays)) {
     keep.add(r.url);
     // Position, place on the ring and shape: a change recreates the pin.
-    const shape = `${r.lat},${r.lon},${i},${n},${r.ios && r.android}`;
+    const round = (r.ios && r.android) || !appsMode(state.params);
+    const shape = `${r.lat},${r.lon},${i},${n},${round}`;
     let pin = pins.get(r.url);
     if (!pin || pin.shape !== shape) {
       if (pin) relayLayer.removeLayer(pin.marker);
       const icon = L.divIcon({
-        className: "pin" + (r.ios && r.android ? "" : " one"),
+        className: "pin" + (round ? "" : " one"),
         iconSize: [PIN, PIN],
         ...ringAnchors(i, n, PIN),
       });
@@ -410,7 +411,7 @@ function drawLinks() {
   for (const cr of cell.relays) {
     const r = relayByUrl(cr.url);
     if (!r) continue;
-    const both = cr.ios !== null && cr.android.length > 0;
+    const both = (cr.ios !== null && cr.android.length > 0) || !appsMode(state.params);
     L.polyline([centre, [r.lat, r.lon]], {
       interactive: false, weight: 2, opacity: 0.8,
       color: colour(r.status || "unprobed"), dashArray: both ? null : "6 6",
@@ -625,7 +626,10 @@ function tooltip(cell) {
 
   const table = el("table", "relays");
   const tr = el("tr");
-  for (const h of ["relay", "iOS", "Android", "status", "delivered"]) tr.append(el("th", null, h));
+  const apps = appsMode(state.params);
+  const heads = apps ? ["relay", "iOS", "Android", "status", "delivered"]
+    : ["relay", "rank", "status", "delivered"];
+  for (const h of heads) tr.append(el("th", null, h));
   table.append(tr);
   for (const r of cell.relays) {
     const row = el("tr");
@@ -634,8 +638,10 @@ function tooltip(cell) {
     const dot = el("span", "dot");
     dot.style.background = colour(status);
     st.append(dot, document.createTextNode(status));
-    row.append(el("td", "url", r.url.replace(/^wss?:\/\//, "")), el("td", null, rank(r.ios)),
-               el("td", null, rank(r.android)), st, el("td", null, r.delivered ? "✓" : ""));
+    row.append(el("td", "url", r.url.replace(/^wss?:\/\//, "")));
+    if (apps) row.append(el("td", null, rank(r.ios)), el("td", null, rank(r.android)));
+    else row.append(el("td", null, rank(r.rank)));
+    row.append(st, el("td", null, r.delivered ? "✓" : ""));
     table.append(row);
   }
   box.append(table);
@@ -776,6 +782,25 @@ function buildPanel() {
   const area = el("div", "area");
   area.append(ui.area, watch, areaResult);
 
+  // The relay strategy listened with (lot 27): the phones follow the apps'
+  // choice; under another strategy, the counts show whom it would reach.
+  ui.strategy = el("select");
+  ui.strategy.setAttribute("aria-label", "relay strategy listened with");
+  const strategyResult = el("span", "warn small");
+  ui.strategy.addEventListener("change", async () => {
+    const wanted = ui.strategy.value;
+    if (!state.params || wanted === state.params.strategy) return;
+    ui.strategy.disabled = true;
+    strategyResult.textContent = "⏳ listening with it…";
+    const { ok, data } = await command("/api/strategy", { strategy: wanted });
+    strategyResult.textContent = ok ? "" : refusalText(data);
+    if (!ok && state.params) ui.strategy.value = state.params.strategy;
+    ui.strategy.disabled = !(state.params && state.params.strategy_change);
+  });
+  ui.strategyNote = el("div", "note muted");
+  const strategy = el("div", "area strategy");
+  strategy.append(el("span", "muted", "relays:"), ui.strategy, strategyResult);
+
   const legend = el("div", "legend");
   const bar = el("div", "bar");
   bar.style.background = `linear-gradient(to right, ${PALETTE.join(", ")})`;
@@ -791,9 +816,25 @@ function buildPanel() {
     el("span", null, "hover a cell: lines to its relays, dashed for one app"));
   legend.append(bar, ends, keys, ui.relayKeys);
 
-  body.append(area, ui.crumbs, ui.stats, ui.reinstateAll, controls, legend, el("div", "note muted",
+  body.append(area, strategy, ui.strategyNote, ui.crumbs, ui.stats, ui.reinstateAll, controls, legend, el("div", "note muted",
     "Presences are not comparable between levels: the apps send heartbeats at levels 2, 4 and 5 only."));
   panel.append(head, ui.link, ui.tabs, body);
+}
+
+// The strategy listened with, and what its counts mean (lot 27).
+function showStrategy(params) {
+  ui.strategy.replaceChildren(...params.strategies.map(s => {
+    const o = el("option", null, s.label);
+    o.value = s.name;
+    return o;
+  }));
+  ui.strategy.value = params.strategy;
+  ui.strategy.disabled = !params.strategy_change;
+  ui.strategy.title = params.strategy_change ? "" : "a public map keeps its relay strategy";
+  ui.strategyNote.textContent = appsMode(params)
+    ? "Listening where the bitchat apps write: the counts are the people in each cell."
+    : "Listening only where this strategy reads: the counts are the people a phone following it "
+      + "would reach today, the phones themselves following the apps.";
 }
 
 // The Watch button while the area changes, asked from this page or from
@@ -922,6 +963,7 @@ function onHello(d) {
   if (document.activeElement !== ui.area) ui.area.value = d.params.start;
   ui.area.placeholder = d.params.geocode ? "area: u09t, a place or an IP address" : "area, e.g. u09t";
   ui.version.textContent = d.params.version;
+  showStrategy(d.params);
   ui.version.title = "version of this bitchat-geohash";
   setChanging(d.changing ?? null);
   if (d.changing == null) nameArea(d.params.start);

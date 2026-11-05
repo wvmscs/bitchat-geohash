@@ -33,6 +33,7 @@ fn cell(geohash: &str, messages: u32, participants: Option<u32>) -> CellStats {
         relays: vec![
             CellRelay {
                 url: "wss://a.example".into(),
+                rank: 1,
                 ios: Some(1),
                 android: vec![2, 3],
                 status: Some(Status::Ok),
@@ -40,6 +41,7 @@ fn cell(geohash: &str, messages: u32, participants: Option<u32>) -> CellStats {
             },
             CellRelay {
                 url: "wss://b.example".into(),
+                rank: 2,
                 ios: None,
                 android: vec![1],
                 status: None,
@@ -66,8 +68,8 @@ fn cell_reference_json() {
             "participants": 3,
             "last_seen": 1_800_000_000,
             "relays": [
-                {"url": "wss://a.example", "ios": 1, "android": [2, 3], "status": "ok", "delivered": true},
-                {"url": "wss://b.example", "ios": null, "android": [1], "status": null, "delivered": false}
+                {"url": "wss://a.example", "rank": 1, "ios": 1, "android": [2, 3], "status": "ok", "delivered": true},
+                {"url": "wss://b.example", "rank": 2, "ios": null, "android": [1], "status": null, "delivered": false}
             ],
             "divergence": ["wss://b.example"]
         })
@@ -105,6 +107,7 @@ fn relay_status_and_connections() {
         lon: 2.3522,
         ios: true,
         android: false,
+        strategy: false,
         status: Some(Status::Auth),
         listened: false,
         channels: 12,
@@ -122,7 +125,7 @@ fn relay_status_and_connections() {
         serde_json::to_value(RelayView::from(&info)).unwrap(),
         json!({
             "url": "wss://a.example", "lat": 48.8566, "lon": 2.3522,
-            "ios": true, "android": false, "status": "auth", "listened": false,
+            "ios": true, "android": false, "strategy": false, "status": "auth", "listened": false,
             "channels": 12,
             "connections": [
                 {"state": "waiting", "retry_in_secs": 2},

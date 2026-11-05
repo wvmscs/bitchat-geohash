@@ -30,6 +30,7 @@ Règle : seuls les fichiers de `bitchat-geohash/` sont modifiés ; le dépôt re
 | 24 | Version (tag ou commit) et nom de la zone sur la ligne du titre | ✅ |
 | 25 | Changement de zone annoncé tout de suite à toutes les pages (`area`, `changing`) | ✅ |
 | 26 | Carte publique : pas de recherche de lieux pour les pages (D27), version 0.4.1 | ✅ |
+| 27 | Sélecteur de stratégie de relais (D28) : la carte écoute avec la stratégie choisie | ✅ |
 
 La numérotation continue celle de l'étape 1. Ordre : 10 → 11 → 11 bis → 12 sont côté librairie ;
 13 dépend de 12 ; 13 bis dépend de 13 ; 14 dépend de 13 ; 15 et 16 sont indépendants entre eux ; 17 peut démarrer
@@ -563,6 +564,28 @@ l'utilisateur : désactiver.
       La zone donnée en ligne de commande reste résolue : c'est l'opérateur qui la tape.
 - [x] Test unitaire ; vérifié sur la carte publique de qualification.
 
+### Lot 27 : sélecteur de stratégie de relais ✅
+
+Demande de l'utilisateur (05/11/2026) : partager l'étude des stratégies de choix des relais
+(geohash-relays, `docs/clients.md`) et en voir l'effet sur la communication entre smartphones,
+au niveau d'une cellule. Choix de l'utilisateur : la carte **écoute** selon la stratégie choisie,
+et geohash-relays est pris à un tag de sa branche `strategies` (pas de fusion dans `main`).
+
+- [x] `src/strategy.rs` : `StrategyKind` (`apps` par défaut, `airhop`, `a0`, `a1`), le choix de
+      chaque stratégie sur les listes en cours. AirHop, A0 et A1 lisent la liste de georelays
+      (celle d'Android, mise à jour chaque jour), sinon celle d'iOS. A2, A3 et A5 demandent des
+      données que la carte n'a pas (moniteurs NIP-66, présences annoncées, fédération) : absentes.
+- [x] `ListenPlan::build_with`, `extend_with` ; `MonitorConfig::strategy` ; `--strategy`.
+- [x] `POST /api/strategy` : le moniteur repart sur la même zone avec l'autre stratégie (comme un
+      changement de zone, lot 19), les pages reçoivent un nouveau `hello`. Refusé sur une carte
+      publique (`--behind-proxy`, adresse non locale) : un visiteur le changerait pour tous.
+- [x] Vues : `strategy` des relais, `rank` des relais d'une cellule ; `params.strategy`,
+      `strategies`, `strategy_change`. Page : sélecteur sous la zone, note sur le sens des
+      comptes ; épingles rondes, traits pleins et une colonne « rank » hors stratégie des apps.
+- [x] Corrigé en passant : la boucle d'envoi qui trouvait le moniteur absent pendant un
+      changement reprenait sur le nouveau sans `hello` ; elle repart maintenant de son état.
+- [x] Tests : `strategy.rs`, `cli.rs`, `tests/server.rs` (changement, stratégie fixe), JS.
+
 ## Décisions
 
 | # | Question | Proposition | État |
@@ -585,6 +608,7 @@ l'utilisateur : désactiver.
 | D24 | Sondage au démarrage (lot 20) | Verdicts de moins d'une heure repris de la base ; avant d'écouter, seuls les relais du canal de la zone sans verdict récent ; les autres en arrière-plan (un relais mort est écouté quelques secondes, ses connexions échouent, puis il est écarté) ; `probe_in_background` à faux rend l'ancien comportement — *précision de l'utilisateur, détails par l'agent* | ✅ |
 | D25 | Derrière un proxy TLS (lot 22) | `--behind-proxy https://<nom>` remplace l'exigence de TLS dans le serveur : HTTP clair, mais seulement depuis les adresses du proxy (`--proxy-from`, boucle locale par défaut), avec la preuve d'un HTTPS en amont (`X-Forwarded-Proto`, `Forwarded`, `CF-Visitor`) et le nom public dans `Host`/`Origin`. Sonde au démarrage vers le nom public, jeton aléatoire, refus de démarrer sinon (`--no-proxy-check`) — *demande et choix de l'utilisateur, détails par l'agent, à valider* | ✅ |
 | D26 | Zone donnée par un lieu (lot 23) | Feature `geocode` (par défaut) avec `geohash-lookup` ; requêtes en direct vers BAN et Nominatim (pas de Tor, choix de l'utilisateur), dit dans le README ; IP par fichier DB-IP local en option (`--geoip-db`, téléchargé si absent) ; un geohash nu reste un geohash (compatibilité), un mot mêlant lettres et chiffres qui n'en est pas un est refusé — *demande et choix de l'utilisateur, détails par l'agent* | ✅ |
+| D28 | Sélecteur de stratégie de relais (lot 27) | La carte écoute les relais que choisit la stratégie sélectionnée ; par défaut celle des apps (invariant 3). Les téléphones suivant les apps, les comptes sous une autre stratégie disent qui un téléphone qui la suivrait atteindrait aujourd'hui. Changement depuis la page refusé sur une carte publique. geohash-relays pris au tag `strategies-2026.11.05` de sa branche `strategies` — *choix de l'utilisateur, détails par l'agent* | ✅ |
 | D27 | Recherche de lieux sur une carte publique (lot 26) | Coupée pour les pages dès que la carte est exposée (`--behind-proxy`, adresse non locale) : pas d'authentification, requêtes vers BAN et Nominatim depuis le serveur. `--geocode-public` la rétablit — *choix de l'utilisateur, détails par l'agent* | ✅ |
 
 ## Risques
@@ -657,3 +681,4 @@ l'utilisateur : désactiver.
 | 30/10/2026 | — | Version 0.4.0 (tag `v0.4.0`), à la demande de l'utilisateur. |
 | 30/10/2026 | 26 | Carte publique sans recherche de lieux pour les pages (D27), à la demande de l'utilisateur. Version 0.4.1 (tag `v0.4.1`). |
 | 05/11/2026 | — | Mises à jour Dependabot #2, #3, #5 fusionnées (thiserror 2.0.21, axum 0.8.9, hyper-util 0.1.21), 162 tests. Regroupement des mises à jour mineures et correctives en une PR hebdomadaire ; `sha2` 0.11 (#4) et `k256` 0.14 (#1, CI en échec) restent ouvertes, à traiter ensemble. |
+| 05/11/2026 | 27 | Sélecteur de stratégie (D28), à la demande de l'utilisateur : `apps`, `airhop`, `a0`, `a1` ; la carte écoute selon la stratégie, changement par la page sauf sur une carte publique. geohash-relays au tag `strategies-2026.11.05`. Course de la boucle d'envoi corrigée. 166 tests. |

@@ -144,6 +144,8 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
   caller reads its own extra options). No argument-parsing dependency.
 - `src/directory.rs`: `RelayDirectory` (CSV parsing with each app's rules, normalisation,
   iOS conflict check) re-exported from `geohash-relays`; list sources and download here.
+- `src/strategy.rs`: the relay strategy the map listens with (`StrategyKind`, D28): the
+  apps' choice by default, or AirHop's, A0, A1 from `geohash-relays`.
 - `src/select.rs`: relay choice per channel (`closest`, `select_both`) from `geohash-relays`,
   wrapped to return this crate's `Error`. Fix selection bugs in `geohash-relays`, not here.
 - `src/channels.rs`: `Level`, channel enumeration.
@@ -176,7 +178,10 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
    tests, when you add fields.
 2. **Read-only on relays.** Never publish an event, never answer NIP-42 AUTH (the app does
    not). `CLOSED auth-required:` marks the relay unusable, without retry.
-3. **Mirror the app's relay choice.** The 5 relays closest to each channel's centre, with each
+3. **Mirror the app's relay choice** by default (`--strategy apps`). Another strategy
+   (`--strategy airhop|a0|a1`, or the page's selector, D28) makes the map listen where that
+   strategy reads, for study: it never changes what the apps-strategy code below does. The 5
+   relays closest to each channel's centre, with each
    app's own rule (`RelayDirectory::parse(csv, platform)`, `closest`): iOS keeps one entry per
    normalised host and sorts by (distance, host); Android keeps raw lines (`host` and
    `host:443` are two entries) and sorts by distance only, stable. Exactly 5, no tie beyond.

@@ -95,3 +95,4 @@ button:disabled { opacity: .5; cursor: default; }
 #panel .area input { flex: 1 1 100px; min-width: 0; font: inherit; font-size: 13px; padding: 3px 6px; }
 #panel .area .warn { flex-basis: 100%; }
 #panel .area input.changing { opacity: .6; }
+#panel .area select { flex: 1 1 140px; min-width: 0; font: inherit; font-size: 13px; }

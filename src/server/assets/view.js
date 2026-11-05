@@ -130,9 +130,15 @@ export function ringed(relays) {
   return out;
 }
 
-// "iOS and Android", "iOS only", "Android only".
+// "iOS and Android", "iOS only", "Android only"; "the strategy" under
+// another relay strategy than the apps' (lot 27).
 export const appsLabel = r =>
-  r.ios && r.android ? "iOS and Android" : r.ios ? "iOS only" : "Android only";
+  r.ios && r.android ? "iOS and Android" : r.ios ? "iOS only" : r.android ? "Android only"
+    : r.strategy ? "the strategy" : "no app";
+
+// The page draws the apps' choice: under another strategy, a relay is
+// simply chosen or not (round pins, plain lines, one rank).
+export const appsMode = params => !params || params.strategy === "apps";
 
 // A refusal from the server, in words.
 // What the area field holds, as the server compares it with the watched
@@ -155,6 +161,10 @@ export function refusalText(body) {
       return "not a geohash: 2 to 7 characters among 0-9 and b-z, without a, i, l, o";
     case "area_fixed":
       return "this map watches a fixed area";
+    case "strategy_fixed":
+      return "this map keeps its relay strategy";
+    case "unknown_strategy":
+      return "unknown relay strategy";
     case "monitor_stopped":
       return "the area is changing: try again in a moment";
     case "place_not_found":

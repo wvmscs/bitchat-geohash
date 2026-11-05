@@ -28,7 +28,7 @@ pub struct MonitorArgs {
 pub const MONITOR_USAGE: &str = "<geohash> [--depth N] [--levels 2,4,5,6] [--max-cells N] \
      [--window 15m] [--inactivity 15m] [--relays-csv <url|path>] \
      [--android-csv <url|path> | --no-android] [--reload-lists] [--no-probe] [--db <path>] [--reinstate-all] \
-     [--forget-descents] [--verbose]";
+     [--forget-descents] [--strategy apps|airhop|a0|a1] [--verbose]";
 
 /// The value of the option being read.
 pub struct Values<'a> {
@@ -120,6 +120,10 @@ pub fn parse(
             "--db" => db = v.value()?,
             "--reinstate-all" => config.reinstate_all = true,
             "--forget-descents" => config.forget_descents = true,
+            "--strategy" => {
+                config.strategy = crate::strategy::StrategyKind::parse(&v.value()?)
+                    .map_err(|e| format!("--strategy: {e}"))?
+            }
             "--verbose" => verbose = true,
             flag if flag.starts_with('-') => {
                 if !extra(flag, &mut v)? {
@@ -183,6 +187,7 @@ mod tests {
             (1, "bitchat-geohash.sqlite")
         );
         assert!(a.config.probe && a.sources.ios.is_some() && a.sources.android.is_some());
+        assert_eq!(a.config.strategy, crate::strategy::StrategyKind::Apps);
     }
 
     #[test]
@@ -214,6 +219,7 @@ mod tests {
         assert!(err("u09 --levels 3").contains("2, 4, 5, 6, 7"));
         assert!(err("u09 --window 5d").starts_with("--window: duration expected"));
         assert_eq!(err("u09 --nope"), "unknown option --nope");
+        assert!(err("u09 --strategy a9").contains("apps, airhop, a0 or a1"));
         assert_eq!(err("u09 u0b"), "one geohash only, got \"u0b\" too");
     }
 

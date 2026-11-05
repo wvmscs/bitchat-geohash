@@ -41,6 +41,12 @@ pub enum Error {
     MonitorStopped,
     #[error("the watched area cannot change here (fixed relay lists, no database to start again)")]
     AreaFixed,
+    #[error(
+        "the relay strategy cannot change here (fixed relay lists, no database to start again)"
+    )]
+    StrategyFixed,
+    #[error("unknown relay strategy {0:?}: apps, airhop, a0 or a1")]
+    UnknownStrategy(String),
     #[error("relay list {0} has no usable relay")]
     EmptyRelayList(String),
     #[error("host {0:?} is listed at two places: iOS rejects this relay list")]

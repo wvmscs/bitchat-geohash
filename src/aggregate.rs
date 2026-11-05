@@ -68,6 +68,8 @@ pub enum Rejection {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CellRelay {
     pub url: String,
+    /// Rank in the strategy's order (lot 27).
+    pub rank: usize,
     /// Rank in the iOS choice.
     pub ios: Option<usize>,
     /// Ranks in the Android choice: two when it picks the server twice.
@@ -302,6 +304,7 @@ impl Aggregator {
                     .iter()
                     .map(|s| CellRelay {
                         url: s.relay.url.clone(),
+                        rank: s.rank,
                         ios: s.ios,
                         android: s.android.clone(),
                         status: verdicts.get(&s.relay.url).map(|v| v.status),

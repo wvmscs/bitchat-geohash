@@ -13,8 +13,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::directory::RelayDirectory;
 use crate::error::Result;
 use crate::nostr::Filter;
-use crate::select::{Selected, select_both};
+use crate::select::Selected;
+use crate::strategy::StrategyKind;
 use crate::{KIND_GEO_MESSAGE, KIND_GEO_PRESENCE};
+use geohash_relays::Strategy;
 
 /// Subscription sizing. Relays limit filter sizes and subscriptions per
 /// connection without documenting it; the defaults are guesses (D3), to be
@@ -121,13 +123,25 @@ impl ListenPlan {
         channels: &[String],
         config: PlanConfig,
     ) -> Result<Self> {
+        let apps = StrategyKind::Apps.chooser(ios, android);
+        Self::build_with(apps.as_ref(), channels, config)
+    }
+
+    /// The same with another relay choice (lot 27): the relays it reads
+    /// each channel from.
+    pub fn build_with(
+        strategy: &dyn Strategy,
+        channels: &[String],
+        config: PlanConfig,
+    ) -> Result<Self> {
         let mut entries = BTreeMap::new();
         let mut by_relay: BTreeMap<String, Vec<String>> = BTreeMap::new();
         for channel in channels {
             if entries.contains_key(channel) {
                 continue;
             }
-            let selected = select_both(ios, android, channel)?;
+            crate::select::geohash_center(channel)?;
+            let selected = strategy.read(channel)?;
             for s in &selected {
                 by_relay
                     .entry(s.relay.url.clone())
@@ -169,10 +183,21 @@ impl ListenPlan {
         android: Option<&RelayDirectory>,
         channels: &[String],
     ) -> Result<Vec<String>> {
+        let apps = StrategyKind::Apps.chooser(ios, android);
+        self.extend_with(apps.as_ref(), channels)
+    }
+
+    /// [`ListenPlan::extend`] with another relay choice (lot 27).
+    pub fn extend_with(
+        &mut self,
+        strategy: &dyn Strategy,
+        channels: &[String],
+    ) -> Result<Vec<String>> {
         let mut fresh: BTreeMap<String, Vec<Selected>> = BTreeMap::new();
         for channel in channels {
             if !self.channels.contains_key(channel) && !fresh.contains_key(channel) {
-                fresh.insert(channel.clone(), select_both(ios, android, channel)?);
+                crate::select::geohash_center(channel)?;
+                fresh.insert(channel.clone(), strategy.read(channel)?);
             }
         }
         let size = self.config.max_tags_per_filter.max(1);

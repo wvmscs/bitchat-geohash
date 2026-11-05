@@ -40,6 +40,8 @@ pub(crate) struct AppState {
     pub(crate) stop: watch::Receiver<bool>,
     #[cfg(feature = "geocode")]
     pub(crate) places: Option<Arc<crate::geocode::Places>>,
+    /// The page may change the relay strategy (lot 27): not on a public map.
+    pub(crate) strategy_change: bool,
 }
 
 /// An error answer: `{"error": code, "message": ..., ...details}`.
@@ -95,6 +97,11 @@ impl From<Error> for ApiError {
                 ApiError::new(StatusCode::SERVICE_UNAVAILABLE, "monitor_stopped", message)
             }
             Error::AreaFixed => ApiError::new(StatusCode::CONFLICT, "area_fixed", message),
+            Error::StrategyFixed => ApiError::new(StatusCode::CONFLICT, "strategy_fixed", message),
+            Error::UnknownStrategy(name) => {
+                ApiError::new(StatusCode::BAD_REQUEST, "unknown_strategy", message)
+                    .with("strategy", json!(name))
+            }
             Error::PlaceNotFound => {
                 ApiError::new(StatusCode::NOT_FOUND, "place_not_found", message)
             }
@@ -329,4 +336,31 @@ pub(crate) async fn place(
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "no_places", "place names are off"))?;
     let place = places.name(&q.geohash).await?;
     Ok(Json(json!({ "geohash": q.geohash, "place": place })))
+}
+
+#[derive(Deserialize)]
+pub(crate) struct StrategyBody {
+    strategy: String,
+}
+
+/// `POST /api/strategy {"strategy": "a1"}`: listens with that relay strategy
+/// instead (lot 27, D28). Answers once the monitor runs with it; the pages
+/// get a new `hello`. Refused on a public map: one visitor would change
+/// what every other one sees.
+pub(crate) async fn strategy(
+    State(s): State<AppState>,
+    body: Result<Json<StrategyBody>, JsonRejection>,
+) -> Result<Json<Value>, ApiError> {
+    let Json(body) = body?;
+    if !s.strategy_change {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "strategy_fixed",
+            "this map is public: its relay strategy does not change from the page",
+        ));
+    }
+    let kind = crate::strategy::StrategyKind::parse(&body.strategy)?;
+    tracing::info!(strategy = %kind, "command: strategy");
+    let config = s.holder.change_strategy(kind).await?;
+    Ok(Json(json!({ "strategy": config.strategy.name() })))
 }

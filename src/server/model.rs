@@ -93,6 +93,8 @@ impl From<&CellStats> for CellView {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CellRelayView {
     pub url: String,
+    /// Rank in the strategy's order (lot 27).
+    pub rank: usize,
     /// Rank in the iOS choice.
     pub ios: Option<usize>,
     /// Ranks in the Android choice (two when it picks the server twice).
@@ -107,6 +109,7 @@ impl From<&CellRelay> for CellRelayView {
     fn from(r: &CellRelay) -> Self {
         CellRelayView {
             url: r.url.clone(),
+            rank: r.rank,
             ios: r.ios,
             android: r.android.clone(),
             status: r.status.map(|s| s.as_str()),
@@ -150,6 +153,8 @@ pub struct RelayView {
     pub lon: f64,
     pub ios: bool,
     pub android: bool,
+    /// Chosen by a strategy other than the apps' (lot 27).
+    pub strategy: bool,
     pub status: Option<&'static str>,
     pub listened: bool,
     pub channels: u32,
@@ -164,6 +169,7 @@ impl From<&RelayInfo> for RelayView {
             lon: r.lon,
             ios: r.ios,
             android: r.android,
+            strategy: r.strategy,
             status: r.status.map(|s| s.as_str()),
             listened: r.listened,
             channels: r.channels,
@@ -270,6 +276,18 @@ pub struct Params {
     pub geocode: bool,
     /// The version of this build, shown by the page (lot 24).
     pub version: String,
+    /// The relay strategy listened with, and those the page offers (lot 27).
+    pub strategy: String,
+    pub strategies: Vec<StrategyChoice>,
+    /// The page may change the strategy (not on a public map).
+    pub strategy_change: bool,
+}
+
+/// A relay strategy the page offers (lot 27).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct StrategyChoice {
+    pub name: &'static str,
+    pub label: &'static str,
 }
 
 /// Mesh precisions of the mesh layer: every prefix length that can hold a
@@ -291,6 +309,15 @@ impl Params {
             mesh_levels: MESH_LEVELS.to_vec(),
             geocode: false,
             version: crate::VERSION.to_owned(),
+            strategy: config.strategy.name().to_owned(),
+            strategies: crate::strategy::StrategyKind::ALL
+                .into_iter()
+                .map(|k| StrategyChoice {
+                    name: k.name(),
+                    label: k.label(),
+                })
+                .collect(),
+            strategy_change: false,
         }
     }
 }

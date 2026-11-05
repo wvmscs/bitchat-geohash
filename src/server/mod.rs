@@ -221,8 +221,11 @@ pub async fn serve_with(
     let listener = tokio::net::TcpListener::bind(config.listen).await?;
     let addr = listener.local_addr()?;
     let holder = Arc::new(Holder::new(monitor, monitor_config.clone(), relaunch));
+    // A public map keeps its strategy: one visitor would change it for all.
+    let strategy_change = config.proxy.is_none() && config.listen.ip().is_loopback();
     #[allow(unused_mut)]
     let mut params = Params::new(monitor_config, &config.tiles, &config.attribution);
+    params.strategy_change = strategy_change;
     #[cfg(feature = "geocode")]
     {
         params.geocode = config.places.is_some();
@@ -245,6 +248,7 @@ pub async fn serve_with(
         stop: stop_rx.clone(),
         #[cfg(feature = "geocode")]
         places: config.places.clone(),
+        strategy_change,
     };
     let guard = Arc::new(guard::Guard::new(
         addr,
@@ -258,7 +262,8 @@ pub async fn serve_with(
         .route("/api/descend", post(api::descend))
         .route("/api/preview", post(api::preview))
         .route("/api/reinstate", post(api::reinstate))
-        .route("/api/area", post(api::area));
+        .route("/api/area", post(api::area))
+        .route("/api/strategy", post(api::strategy));
     #[cfg(feature = "geocode")]
     let app = app.route("/api/place", get(api::place));
     let app = app
@@ -324,11 +329,20 @@ async fn push_loop(
         generation.mark_unchanged();
         let mut events = match holder.get().await {
             Ok(m) => m.subscribe(),
-            // Changing: wait for the new one.
+            // Changing: wait for the new one, and start the pages over
+            // from it (otherwise they would only get its deltas).
             Err(_) => {
                 tokio::select! {
                     _ = stop.changed() => break,
-                    _ = generation.changed() => continue 'monitor,
+                    _ = generation.changed() => {
+                        if let Ok(m) = holder.get().await
+                            && let Err(e) = reset(&m, &holder.config(), &live).await
+                        {
+                            tracing::warn!(error = %e, "cannot read the new monitor state");
+                            api::announce_area(&live, None);
+                        }
+                        continue 'monitor;
+                    }
                 }
             }
         };
@@ -412,6 +426,7 @@ async fn reset(monitor: &Monitor, config: &MonitorConfig, live: &Live) -> Result
     let old = published.params();
     let mut params = Params::new(config, &old.tiles, &old.attribution);
     params.geocode = old.geocode;
+    params.strategy_change = old.strategy_change;
     // The sequence goes on: a page that missed the `hello` sees a gap and
     // reconnects.
     let seq = published.seq();

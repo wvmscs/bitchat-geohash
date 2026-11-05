@@ -120,6 +120,8 @@ test("relays at one point go on a ring (lot 16)", () => {
   assert.ok(Math.abs(p0[0] - 8 + (p1[0] - 8)) < 1e-9 && Math.abs(p0[1] - 8 + (p1[1] - 8)) < 1e-9);
   assert.equal(Math.round(Math.hypot(p0[0] - 8, p0[1] - 8)), 18);
   assert.deepEqual(relays.map(v.appsLabel), ["iOS and Android", "iOS only", "Android only"]);
+  assert.equal(v.appsLabel({ ios: false, android: false, strategy: true }), "the strategy");
+  assert.ok(v.appsMode(null) && v.appsMode({ strategy: "apps" }) && !v.appsMode({ strategy: "a1" }));
 });
 
 test("URL view with meshes and relays", () => {

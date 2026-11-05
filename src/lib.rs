@@ -27,6 +27,7 @@ pub mod select;
 #[cfg(feature = "server")]
 pub mod server;
 pub mod store;
+pub mod strategy;
 
 pub use error::{Error, Result};
 

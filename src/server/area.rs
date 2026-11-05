@@ -14,6 +14,7 @@ use crate::directory::RelayDirectory;
 use crate::error::{Error, Result};
 use crate::monitor::{ListSources, Monitor, MonitorConfig, check_area};
 use crate::store::Store;
+use crate::strategy::StrategyKind;
 
 /// How to start the monitor again on another area.
 pub enum Relaunch {
@@ -120,29 +121,68 @@ impl Holder {
         geohash: &str,
         announce: impl FnOnce(&str),
     ) -> Result<MonitorConfig> {
+        self.relaunch_with(
+            Error::AreaFixed,
+            |config| {
+                config.start = geohash.to_owned();
+                config.start = check_area(config)?;
+                Ok(())
+            },
+            |config| announce(&config.start),
+        )
+        .await
+    }
+
+    /// Listens with another relay strategy (lot 27): the monitor starts
+    /// again on the same area. Unchanged when it is already the one.
+    pub(crate) async fn change_strategy(&self, strategy: StrategyKind) -> Result<MonitorConfig> {
+        self.relaunch_with(
+            Error::StrategyFixed,
+            |config| {
+                config.strategy = strategy;
+                Ok(())
+            },
+            |_| {},
+        )
+        .await
+    }
+
+    /// Starts the monitor again with the configuration `apply` gives; back
+    /// to the previous one if that fails. `fixed`: the error when the
+    /// monitor cannot start again here.
+    async fn relaunch_with(
+        &self,
+        fixed: Error,
+        apply: impl FnOnce(&mut MonitorConfig) -> Result<()>,
+        announce: impl FnOnce(&MonitorConfig),
+    ) -> Result<MonitorConfig> {
         let _one = self.changing.lock().await;
-        let relaunch = self.relaunch.as_ref().ok_or(Error::AreaFixed)?;
+        let relaunch = self.relaunch.as_ref().ok_or(fixed)?;
         let old = self.config();
         let mut config = old.clone();
-        config.start = geohash.to_owned();
-        config.start = check_area(&config)?;
-        if config.start == old.start {
+        apply(&mut config)?;
+        if config.start == old.start && config.strategy == old.strategy {
             return Ok(old);
         }
-        announce(&config.start);
+        announce(&config);
         // Not for a second time: they were applied at the start.
         config.reinstate_all = false;
         config.forget_descents = false;
         // The lists of this session are in the database: no download.
         config.reload_lists = false;
         let store = self.take().await?.shutdown().await?;
-        tracing::info!(from = %old.start, to = %config.start, "watched area changes");
+        tracing::info!(
+            area = %config.start,
+            strategy = %config.strategy,
+            "monitor starts again (area {} -> {}, strategy {} -> {})",
+            old.start, config.start, old.strategy, config.strategy
+        );
         let (monitor, config) = match relaunch.start(config.clone(), store).await {
             Ok(m) => (m, config),
             Err(e) => {
                 // The store went with the failed start: open it again and
-                // go back to the previous area.
-                tracing::warn!(error = %e, area = %config.start, "cannot watch the new area, back to the previous one");
+                // go back to the previous configuration.
+                tracing::warn!(error = %e, area = %config.start, strategy = %config.strategy, "cannot start again, back to the previous configuration");
                 let store = Store::open(relaunch.db())?;
                 let mut back = old.clone();
                 (back.reinstate_all, back.forget_descents, back.reload_lists) =

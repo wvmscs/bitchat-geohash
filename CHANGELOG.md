@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Added
+- Relay strategy selector (lot 27, D28): `--strategy apps|airhop|a0|a1`, and a selector in the
+  panel. The map listens where the chosen strategy reads (by default, the apps' choice); the
+  counts then show the people a phone following it would reach. `POST /api/strategy` starts the
+  monitor again on the same area; refused on a public map. geohash-relays from the tag
+  `strategies-2026.11.05` of its branch `strategies`.
+
+### Fixed
+- After an area change, a page could get only the new monitor's deltas, without the `hello`
+  that starts it over, when the push loop found no monitor during the change.
+
 ### Changed
 - Dependencies: thiserror 2.0.21, axum 0.8.9, hyper-util 0.1.21 (Dependabot #2, #3, #5).
   Dependabot groups the minor and patch Rust updates into one weekly PR; each major one

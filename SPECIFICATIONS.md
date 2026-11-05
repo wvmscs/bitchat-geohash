@@ -156,7 +156,8 @@ sur une carte OpenStreetMap.
 bitchat-geohash <geohash> [--depth N] [--levels 4,5,6] [--max-cells N] [--window 15m]
     [--inactivity 15m] [--relays-csv online_relays_gps.csv]
     [--android-csv nostr_relays.csv | --no-android] [--no-probe] [--db <fichier>]
-    [--reinstate-all] [--forget-descents] [--listen 127.0.0.1:8080] [--allow-remote]
+    [--reinstate-all] [--forget-descents] [--strategy apps|airhop|a0|a1]
+    [--listen 127.0.0.1:8080] [--allow-remote]
     [--tls-cert <pem> --tls-key <pem> | --insecure-remote |
      --behind-proxy https://<nom> [--proxy-from 127.0.0.1/8,::1] [--no-proxy-check]]
     [--tiles <url> --tiles-attribution <html>] [--open] [--verbose]
@@ -167,6 +168,10 @@ bitchat-geohash <geohash> [--depth N] [--levels 4,5,6] [--max-cells N] [--window
   peut démarrer (geohash invalide, plafond, aucune liste, port occupé), avec un message.
 
 * Les relais morts sont toujours écartés, jamais remplacés : pas d'option pour les garder.
+* `--strategy` (D28 de `PLAN_ET2.md`) : la stratégie de choix des relais avec laquelle la carte
+  écoute ; `apps` par défaut (ce que font les applications), sinon AirHop, A0 ou A1 de
+  geohash-relays, pour étudier qui un téléphone suivant cette stratégie atteindrait. La page la
+  change aussi, sauf sur une carte publique.
 * Écoute locale (`127.0.0.1`) par défaut ; une autre adresse exige `--allow-remote` et TLS
   (`--insecure-remote` pour s'en passer, avec avertissement). TLS permet HTTP/2.
 * Derrière un proxy TLS (D25, `--behind-proxy https://<nom>`) : HTTP clair vers le proxy

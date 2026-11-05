@@ -15,6 +15,7 @@ use bitchat_geohash::server::{
     Asset, Net, ProxyConfig, Relaunch, Server, ServerConfig, TlsFiles, router, serve, serve_with,
 };
 use bitchat_geohash::store::Store;
+use bitchat_geohash::strategy::StrategyKind;
 use bitchat_geohash::{Error, KIND_GEO_MESSAGE};
 use common::*;
 use serde_json::{Value, json};
@@ -803,4 +804,59 @@ async fn behind_a_proxy_the_start_checks() {
     };
     let server = serve(monitor, &config, server).await.unwrap();
     drop(server.shutdown().await.unwrap().shutdown().await.unwrap());
+}
+
+// Lot 27: the relay strategy listened with changes from the page; the
+// monitor starts again on the same area, the pages get a new `hello`.
+#[tokio::test]
+async fn the_strategy_changes_and_the_pages_start_over() {
+    let r = Running::start_with(|_, _| {}, true).await;
+    let mut sse = SseReader::open(&r.url("/api/events")).await;
+    let (_, _, hello) = sse.next().await.unwrap();
+    assert_eq!(hello["params"]["strategy"], "apps");
+    assert_eq!(hello["params"]["strategy_change"], true);
+    assert_eq!(hello["params"]["strategies"].as_array().unwrap().len(), 4);
+    assert!(hello["relays"][0]["ios"] == true && hello["relays"][0]["strategy"] == false);
+
+    let (status, body) = r.post("/api/strategy", r#"{"strategy":"nope"}"#).await;
+    assert_eq!((status, &body["error"]), (400, &json!("unknown_strategy")));
+    let (status, body) = r.post("/api/strategy", r#"{"strategy":"A1"}"#).await;
+    assert_eq!((status, &body["strategy"]), (200, &json!("a1")), "{body}");
+    let (_, hello) = sse
+        .until("hello", |d| d["params"]["strategy"] == "a1")
+        .await;
+    assert_eq!(hello["params"]["start"], "u09t", "same area");
+    let relay = &hello["relays"][0];
+    assert!(
+        relay["ios"] == false && relay["strategy"] == true,
+        "{relay}"
+    );
+    // The one relay is still listened to, once the new monitor is
+    // connected to it: events still count.
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while r.state().await["relays"][0]["connections"][0]["state"] != "connected" {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("not connected again");
+    r.relay.publish(message("u09tv", r.clock.get()));
+    sse.until("cells", |d| {
+        cell(&d["cells"], "u09tv")
+            .is_some_and(|c| c["messages"] == 1 && c["relays"][0]["rank"] == 1)
+    })
+    .await;
+    // The same strategy again: nothing to do.
+    let (status, body) = r.post("/api/strategy", r#"{"strategy":"a1"}"#).await;
+    assert_eq!((status, &body["strategy"]), (200, &json!("a1")));
+    r.stop().await;
+}
+
+#[tokio::test]
+async fn the_strategy_is_fixed_without_a_way_to_start_again() {
+    let r = Running::start(|c, _| c.strategy = StrategyKind::Airhop).await;
+    assert_eq!(r.state().await["params"]["strategy"], "airhop");
+    let (status, body) = r.post("/api/strategy", r#"{"strategy":"apps"}"#).await;
+    assert_eq!((status, &body["error"]), (409, &json!("strategy_fixed")));
+    r.stop().await;
 }

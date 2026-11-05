@@ -192,15 +192,18 @@ fn summary(config: &MonitorConfig, status: &MonitorStatus, relays: &[RelayInfo])
         status.retired.len()
     );
     eprintln!(
-        "relays: {} listened, {} set aside",
+        "relays: {} listened, {} set aside, strategy {} ({})",
         status.relays.len(),
-        status.dropped_relays.len()
+        status.dropped_relays.len(),
+        config.strategy,
+        config.strategy.label()
     );
     for r in relays {
         let apps = match (r.ios, r.android) {
             (true, true) => "iOS+Android",
             (true, false) => "iOS",
-            _ => "Android",
+            (false, true) => "Android",
+            (false, false) => "strategy",
         };
         let status = r.status.map_or("unprobed", |s| s.as_str());
         let note = if r.listened {

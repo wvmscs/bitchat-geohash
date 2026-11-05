@@ -37,6 +37,7 @@ use crate::probe::{
     PROBE_CONCURRENCY, PROBE_TIMEOUT, Status, Verdict, probe_new_relays, probe_where,
 };
 use crate::store::{ChannelState, RelayListLoad, Store, StoreWriter, Write, sha256_hex};
+use crate::strategy::StrategyKind;
 
 #[derive(Clone)]
 pub struct MonitorConfig {
@@ -76,6 +77,9 @@ pub struct MonitorConfig {
     pub reload_lists: bool,
     /// How long a preview lasts after its latest request (D21).
     pub preview_for: Duration,
+    /// Which relays to listen to for a channel (lot 27, D28): by default,
+    /// those the apps choose.
+    pub strategy: StrategyKind,
 }
 
 impl MonitorConfig {
@@ -99,6 +103,7 @@ impl MonitorConfig {
             reload_every: Duration::from_secs(24 * 3600),
             reload_lists: false,
             preview_for: Duration::from_secs(300),
+            strategy: StrategyKind::Apps,
         }
     }
 }
@@ -203,6 +208,8 @@ pub struct RelayInfo {
     /// Chosen by each app for at least one channel.
     pub ios: bool,
     pub android: bool,
+    /// Chosen by a strategy other than the apps' (lot 27).
+    pub strategy: bool,
     /// Probe or connection verdict; `None` when not probed.
     pub status: Option<Status>,
     /// Listened to: alive, with at least one watched channel.
@@ -469,9 +476,11 @@ impl Monitor {
             tracing::info!(count = restored, "channels of previous descents restored");
         }
         channels.extend(restorable.into_iter().take(room));
-        let mut plan = ListenPlan::build(
-            ios.as_ref(),
-            android.as_ref(),
+        let mut plan = ListenPlan::build_with(
+            config
+                .strategy
+                .chooser(ios.as_ref(), android.as_ref())
+                .as_ref(),
             &channels,
             config.plan.clone(),
         )?;
@@ -808,6 +817,7 @@ impl State {
         let current = lists.sha256.clone();
         let channels = self.channels.clone();
         let plan_config = self.config.plan.clone();
+        let strategy = self.config.strategy;
         let known = self.verdicts.clone();
         let (probe, concurrency, timeout) = (
             self.config.probe,
@@ -852,7 +862,8 @@ impl State {
                 }
             }
             if changed {
-                match ListenPlan::build(ios.as_ref(), android.as_ref(), &channels, plan_config) {
+                let chooser = strategy.chooser(ios.as_ref(), android.as_ref());
+                match ListenPlan::build_with(chooser.as_ref(), &channels, plan_config) {
                     Ok(plan) => {
                         let verdicts = if probe {
                             probe_new_relays(&plan, &known, concurrency, timeout).await
@@ -1008,9 +1019,11 @@ impl State {
     fn listen(&mut self, fresh: &[String]) -> Result<Vec<String>> {
         let before: std::collections::BTreeSet<String> =
             self.plan.all_relays().into_iter().collect();
-        let added = self
-            .plan
-            .extend(self.ios.as_ref(), self.android.as_ref(), fresh)?;
+        let chooser = self
+            .config
+            .strategy
+            .chooser(self.ios.as_ref(), self.android.as_ref());
+        let added = self.plan.extend_with(chooser.as_ref(), fresh)?;
         if added.is_empty() {
             return Ok(added);
         }
@@ -1168,6 +1181,7 @@ impl State {
                     lon: s.relay.lon,
                     ios: false,
                     android: false,
+                    strategy: false,
                     status: self.verdicts.get(&s.relay.url).map(|v| v.status),
                     listened: listened.contains(&s.relay.url),
                     channels: 0,
@@ -1180,6 +1194,7 @@ impl State {
                 });
                 r.ios |= s.ios.is_some();
                 r.android |= !s.android.is_empty();
+                r.strategy |= s.ios.is_none() && s.android.is_empty();
                 r.channels += u32::from(watched);
             }
         }
