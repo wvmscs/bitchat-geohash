@@ -116,6 +116,29 @@ export function ringAnchors(index, count, size) {
   };
 }
 
+// Where a pin of a ring sits, in pixels from its point (see ringAnchors):
+// a cell's line ends on its relay's own pin.
+export function ringOffset(index, count) {
+  if (count <= 1) return [0, 0];
+  const a = 2 * Math.PI * index / count - Math.PI / 2;
+  const radius = count > 1 ? 10 + 4 * count : 0;
+  return [radius * Math.cos(a), radius * Math.sin(a)];
+}
+
+// A relay that cannot be reached: its line goes under the others.
+export const isDown = status => status === "dead" || status === "down";
+
+// How many relays share each place, for the places shared by two or more:
+// IP geolocation puts whole data centres on one point.
+export function sharedPlaces(relays) {
+  const by = new Map();
+  for (const r of relays) {
+    const key = `${r.lat},${r.lon}`;
+    by.set(key, (by.get(key) || 0) + 1);
+  }
+  return [...by.values()].filter(n => n > 1);
+}
+
 // Relays grouped by coordinates: [[relay, index, count], ...], so that
 // relays at one point go on one ring.
 export function ringed(relays) {

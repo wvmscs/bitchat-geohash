@@ -144,3 +144,15 @@ test("reach of the reference apps (lot 28)", () => {
   ];
   assert.deepEqual(v.reachSummary(cells, false), [["bitchat iOS", [1, 2]], ["bitchat Android", [0, 1]]]);
 });
+
+test("lines end on the pins of a ring; places shared by relays", () => {
+  assert.deepEqual(v.ringOffset(0, 1), [0, 0]);
+  // Two pins: opposite sides, as their anchors (ringAnchors).
+  const [a, b] = [v.ringOffset(0, 2), v.ringOffset(1, 2)];
+  const anchor = v.ringAnchors(0, 2, 16).iconAnchor;
+  assert.ok(Math.abs(8 - anchor[0] - a[0]) < 1e-9 && Math.abs(8 - anchor[1] - a[1]) < 1e-9);
+  assert.ok(Math.abs(a[0] + b[0]) < 1e-9 && Math.abs(a[1] + b[1]) < 1e-9);
+  assert.deepEqual(v.sharedPlaces([{ lat: 1, lon: 2 }, { lat: 1, lon: 2 }, { lat: 3, lon: 4 },
+    { lat: 5, lon: 6 }, { lat: 5, lon: 6 }, { lat: 5, lon: 6 }]), [2, 3]);
+  assert.ok(v.isDown("dead") && v.isDown("down") && !v.isDown("ok") && !v.isDown(null));
+});

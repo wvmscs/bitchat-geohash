@@ -17,10 +17,15 @@
   (A8)", and A2 to A6 greyed out with what the map lacks for each.
 
 ### Fixed
+- The lines from a hovered cell to its relays end on each relay's own pin: relays at one point
+  (a data centre) no longer give one line for several. The cell's details say how many relays
+  share a place, and the lines of unreachable relays are drawn under the others.
 - After an area change, a page could get only the new monitor's deltas, without the `hello`
   that starts it over, when the push loop found no monitor during the change.
 
 ### Changed
+- The note on presences is one short line, the whole rule in its tooltip (levels 2, 4 and 5
+  only, not teleported, not the Bluetooth mesh).
 - Dependencies: thiserror 2.0.21, axum 0.8.9, hyper-util 0.1.21 (Dependabot #2, #3, #5).
   Dependabot groups the minor and patch Rust updates into one weekly PR; each major one
   still comes alone.

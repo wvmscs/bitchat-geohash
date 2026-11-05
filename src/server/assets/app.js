@@ -10,7 +10,8 @@
 // Strings from relays or relay lists only ever go through `textContent`.
 
 import {
-  ago, ancestors, appsLabel, appsMode, belowSummary, reachBadges, reachSummary, cellsMeeting, childLevel, childrenOf, fillColour,
+  ago, ancestors, appsLabel, appsMode, belowSummary, isDown, reachBadges, reachSummary,
+  ringOffset, sharedPlaces, cellsMeeting, childLevel, childrenOf, fillColour,
   formatHash, levelCounts, levelLabel, maxValue, parseHash, rank, refusalText, rejectedTotal, typedArea,
   ringAnchors, ringed, scaleValue, PALETTE,
 } from "./view.js";
@@ -58,6 +59,8 @@ if (state.wanted.relays) state.showRelays = true;
 // --- Map -------------------------------------------------------------------
 
 const map = L.map("map", { zoomSnap: 0.5 }).setView([20, 0], 2);
+// The rings of pins are in pixels: the lines to them follow the zoom.
+map.on("zoomend", () => drawLinks());
 const renderer = L.svg({ padding: 0.5 });
 const layers = new Map();   // geohash -> L.Rectangle
 const groups = new Map();   // level -> L.LayerGroup
@@ -408,11 +411,17 @@ function drawLinks() {
   const cell = state.hover && state.cells.get(state.hover);
   if (!cell || !state.showRelays) return;
   const centre = L.latLngBounds(cell.bbox).getCenter();
-  for (const cr of cell.relays) {
-    const r = relayByUrl(cr.url);
-    if (!r) continue;
+  // Each line ends on its relay's pin, on the ring of the relays that share
+  // its point: they do not all end on one spot.
+  const ring = new Map(ringed(state.relays).map(([r, i, n]) => [r.url, ringOffset(i, n)]));
+  const rows = cell.relays.map(cr => [cr, relayByUrl(cr.url)]).filter(([, r]) => r);
+  // The relays that cannot be reached first: the others are drawn over them.
+  rows.sort(([, a], [, b]) => isDown(b.status) - isDown(a.status));
+  for (const [cr, r] of rows) {
     const both = (cr.ios !== null && cr.android.length > 0) || !appsMode(state.params);
-    L.polyline([centre, [r.lat, r.lon]], {
+    const [dx, dy] = ring.get(r.url) || [0, 0];
+    const end = map.layerPointToLatLng(map.latLngToLayerPoint([r.lat, r.lon]).add(L.point(dx, dy)));
+    L.polyline([centre, end], {
       interactive: false, weight: 2, opacity: 0.8,
       color: colour(r.status || "unprobed"), dashArray: both ? null : "6 6",
     }).addTo(links);
@@ -661,6 +670,11 @@ function tooltip(cell) {
     table.append(row);
   }
   box.append(table);
+  // Whole data centres sit on one point: their lines start together.
+  const placed = cell.relays.map(r => relayByUrl(r.url)).filter(Boolean);
+  for (const n of sharedPlaces(placed)) {
+    box.append(el("div", "muted small", `${n} relays are located at the same place.`));
+  }
   const below = childLevel(cell.level);
   if (cell.watched && below !== null) {
     const s = belowSummary(childrenOf(state.cells.values(), cell.geohash));
@@ -832,8 +846,13 @@ function buildPanel() {
     el("span", null, "hover a cell: lines to its relays, dashed for one app"));
   legend.append(bar, ends, keys, ui.relayKeys);
 
-  body.append(area, strategy, ui.strategyNote, ui.crumbs, ui.stats, ui.reinstateAll, controls, legend, el("div", "note muted",
-    "Presences are not comparable between levels: the apps send heartbeats at levels 2, 4 and 5 only."));
+  // Presences: the short rule, the whole of it on hover.
+  const presences = el("div", "note muted", "Presences: levels 2, 4 and 5 only. ⓘ");
+  presences.title = "Phones report their presence only at levels 2, 4 and 5, and only when not "
+    + "teleported (bitchat's rule). In finer cells, people appear only when they write. People "
+    + "reachable only over the Bluetooth mesh are not shown.";
+  body.append(area, strategy, ui.strategyNote, ui.crumbs, ui.stats, ui.reinstateAll, controls, legend,
+    presences);
   panel.append(head, ui.link, ui.tabs, body);
 }
 
