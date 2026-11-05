@@ -656,3 +656,4 @@ l'utilisateur : désactiver.
 | 30/10/2026 | 24 | Nom de la zone déplacé après la cellule (« live · #u09t ≈ … »), retour de l'utilisateur : plus de place sur la ligne du titre. |
 | 30/10/2026 | — | Version 0.4.0 (tag `v0.4.0`), à la demande de l'utilisateur. |
 | 30/10/2026 | 26 | Carte publique sans recherche de lieux pour les pages (D27), à la demande de l'utilisateur. Version 0.4.1 (tag `v0.4.1`). |
+| 05/11/2026 | — | Mises à jour Dependabot #2, #3, #5 fusionnées (thiserror 2.0.21, axum 0.8.9, hyper-util 0.1.21), 162 tests. Regroupement des mises à jour mineures et correctives en une PR hebdomadaire ; `sha2` 0.11 (#4) et `k256` 0.14 (#1, CI en échec) restent ouvertes, à traiter ensemble. |

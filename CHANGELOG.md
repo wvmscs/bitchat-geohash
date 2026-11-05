@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Changed
+- Dependencies: thiserror 2.0.21, axum 0.8.9, hyper-util 0.1.21 (Dependabot #2, #3, #5).
+  Dependabot groups the minor and patch Rust updates into one weekly PR; each major one
+  still comes alone.
+
 ## [0.4.1] - 2026-10-30
 
 ### Security
