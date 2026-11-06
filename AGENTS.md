@@ -106,6 +106,9 @@ cargo clippy -p bitchat-geohash --all-targets --all-features -- -D warnings   # 
 cargo clippy -p bitchat-geohash --all-targets --no-default-features -- -D warnings
 cargo test -p bitchat-geohash --release -- --ignored                         # timing tests (plan build)
 node --test tests/js/view.test.mjs                                          # page helpers (view.js)
+cargo clippy -p bitchat-geohash --target wasm32-unknown-unknown --no-default-features --lib -- -D warnings  # browser build
+web/build.sh && cargo test -p bitchat-geohash --test browser -- --ignored   # browser build in headless Chrome
+BITCHAT_TEST_RELAY=wss://… cargo test --test browser -- --ignored the_map_on_the_test_relay   # closed loop (nak)
 reuse lint                                                                  # copyright and licence of every file
 cargo run -p bitchat-geohash --example watch -- u09 --depth 2                # real network
 cargo run -p bitchat-geohash --example watch -- u09tvw --depth 0 --no-android \
@@ -167,6 +170,10 @@ Tests run offline: the frozen CSVs from `tests/data/` and the local `TestRelay`
 - `src/main.rs`: the `bitchat-geohash` binary (`required-features = ["server"]`): server
   options, start-up summary, `map: <url>` on stderr (read by `tests/cli.rs`), exit codes 2
   (command line) and 1 (start-up).
+- `src/browser.rs` (`wasm32`): `Engine`, the browser build's entry point for `web/worker.js`.
+  `web/`: `build.sh` (the static site in `target/web`: the server's page, plus `shim.js`, which
+  hands its `/api/*` requests and event stream to `worker.js`, where the engine runs and keeps
+  its snapshot in IndexedDB). The page itself is not copied: `src/server/assets/` is the only one.
 - `examples/watch.rs`, `tests/`, `tests/data/`.
 
 ## Invariants (do not break these)

@@ -2,14 +2,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! The map in the browser, without a server: the site of `web/build.sh` in
-//! a headless Google Chrome, driven over the DevTools protocol, on a local
-//! relay. Ignored by default (it needs the built site and Chrome):
+//! a headless Google Chrome, driven over the DevTools protocol. Ignored by
+//! default (it needs the built site and Chrome):
 //!
 //! ```sh
 //! web/build.sh && cargo test --test browser -- --ignored
 //! ```
 //!
-//! `BITCHAT_CHROME` overrides the path of Chrome.
+//! On a local relay; on `$BITCHAT_TEST_RELAY` when set (closed loop: a
+//! message published there with `nak` and a throwaway key); on the real
+//! network, read only, with `BITCHAT_REAL_NETWORK=1` (a screenshot in
+//! `target/web-real-network.png`). `BITCHAT_CHROME` overrides the path of
+//! Chrome.
 #![cfg(feature = "server")]
 
 mod common;
@@ -30,7 +34,7 @@ use tokio_tungstenite::tungstenite::Message;
 const CHROME: &str = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
 /// Serves the site, and `/relays.csv`: one relay, in Paris.
-async fn serve_site(root: PathBuf, relay: String) -> String {
+async fn serve_site(root: PathBuf, relay: Option<String>) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     tokio::spawn(async move {
@@ -44,23 +48,24 @@ async fn serve_site(root: PathBuf, relay: String) -> String {
                 let request = String::from_utf8_lossy(&buf[..n]).to_string();
                 let path = request.split(' ').nth(1).unwrap_or("/");
                 let path = path.split('?').next().unwrap_or("/");
-                let (status, kind, body) = if path == "/relays.csv" {
-                    let csv = format!("Relay URL,Latitude,Longitude\n{relay},48.8566,2.3522\n");
-                    ("200 OK", "text/csv", csv.into_bytes())
-                } else {
-                    let file = if path == "/" {
-                        "index.html"
+                let (status, kind, body) =
+                    if let Some(relay) = relay.filter(|_| path == "/relays.csv") {
+                        let csv = format!("Relay URL,Latitude,Longitude\n{relay},48.8566,2.3522\n");
+                        ("200 OK", "text/csv", csv.into_bytes())
                     } else {
-                        &path[1..]
+                        let file = if path == "/" {
+                            "index.html"
+                        } else {
+                            &path[1..]
+                        };
+                        match std::fs::read(root.join(file))
+                            .ok()
+                            .filter(|_| !file.contains(".."))
+                        {
+                            Some(bytes) => ("200 OK", mime(file), bytes),
+                            None => ("404 Not Found", "text/plain", b"not found".to_vec()),
+                        }
                     };
-                    match std::fs::read(root.join(file))
-                        .ok()
-                        .filter(|_| !file.contains(".."))
-                    {
-                        Some(bytes) => ("200 OK", mime(file), bytes),
-                        None => ("404 Not Found", "text/plain", b"not found".to_vec()),
-                    }
-                };
                 let head = format!(
                     "HTTP/1.1 {status}\r\ncontent-type: {kind}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
                     body.len()
@@ -272,22 +277,48 @@ fn message(channel: &str) -> Event {
     .unwrap()
 }
 
+fn site() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("target/web")
+}
+
+fn chrome_path() -> String {
+    std::env::var("BITCHAT_CHROME").unwrap_or_else(|_| CHROME.to_owned())
+}
+
+/// The built site and Chrome are there; otherwise the test says so and
+/// does nothing (`cargo test -- --ignored` also runs the timing tests).
+fn ready() -> bool {
+    let built = site().join("assets/pkg/bitchat_geohash_bg.wasm").exists();
+    let chrome = Path::new(&chrome_path()).exists();
+    if !built || !chrome {
+        eprintln!("browser test skipped: site built: {built} (web/build.sh), Chrome: {chrome}");
+    }
+    built && chrome
+}
+
+/// The built site, served, and Chrome on its page with `query`.
+async fn open_map(relay: Option<String>, query: &str) -> (Chrome, Page, String) {
+    bitchat_geohash::install_crypto_provider();
+    let base = serve_site(site(), relay).await;
+    let chrome = Chrome::launch(&chrome_path());
+    let mut page = Page::open(&chrome).await;
+    let url = format!("{base}/?{}", query.replace("{base}", &base));
+    page.call("Page.navigate", json!({ "url": url })).await;
+    (chrome, page, base)
+}
+
 #[tokio::test]
 #[ignore = "needs web/build.sh and Google Chrome"]
 async fn the_map_runs_in_the_browser_without_a_server() {
-    let site = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/web");
-    assert!(
-        site.join("assets/pkg/bitchat_geohash_bg.wasm").exists(),
-        "run web/build.sh first"
-    );
-    bitchat_geohash::install_crypto_provider();
-    let chrome_path = std::env::var("BITCHAT_CHROME").unwrap_or_else(|_| CHROME.to_owned());
+    if !ready() {
+        return;
+    }
     let relay = TestRelay::spawn("127.0.0.1:0").await.unwrap();
-    let base = serve_site(site, relay.url()).await;
-    let chrome = Chrome::launch(&chrome_path);
-    let mut page = Page::open(&chrome).await;
-    let url = format!("{base}/?area=u09t&relays-csv={base}/relays.csv&no-android");
-    page.call("Page.navigate", json!({ "url": url })).await;
+    let (chrome, mut page, _) = open_map(
+        Some(relay.url()),
+        "area=u09t&relays-csv={base}/relays.csv&no-android",
+    )
+    .await;
 
     // The page's own panel, fed by the event stream from the worker.
     page.until(
@@ -342,4 +373,138 @@ async fn the_map_runs_in_the_browser_without_a_server() {
     assert!(page.errors.is_empty(), "{:?}", page.errors);
     drop(chrome);
     relay.shutdown().await;
+}
+
+const COUNTED_IN_U09TV: &str = "fetch('/api/state').then(r => r.json()).then(s => \
+     s.cells.some(c => c.geohash === 'u09tv' && c.messages >= 1))";
+
+/// Closed loop on the user's own relay: the map listens to it alone, and a
+/// message published there with a throwaway key (`nak`) is counted.
+#[tokio::test]
+#[ignore = "needs web/build.sh, Google Chrome, nak and $BITCHAT_TEST_RELAY"]
+async fn the_map_on_the_test_relay() {
+    let Ok(relay) = std::env::var("BITCHAT_TEST_RELAY") else {
+        eprintln!("BITCHAT_TEST_RELAY not set: nothing done");
+        return;
+    };
+    if !ready() {
+        return;
+    }
+    let (chrome, mut page, _) = open_map(
+        Some(relay.clone()),
+        "area=u09t&relays-csv={base}/relays.csv&no-android",
+    )
+    .await;
+    page.until(
+        "connected",
+        &format!("{PANEL}.includes('connections: 1 / 1 open')"),
+    )
+    .await;
+    let key = Command::new("nak")
+        .args(["key", "generate"])
+        .output()
+        .expect("nak");
+    let key = String::from_utf8(key.stdout).unwrap();
+    let published = Command::new("nak")
+        .args([
+            "event",
+            "-k",
+            "20000",
+            "-t",
+            "g=u09tv",
+            "-c",
+            "bitchat-geohash browser build: qualification",
+            "--sec",
+            key.trim(),
+            &relay,
+        ])
+        .output()
+        .expect("nak");
+    assert!(
+        published.status.success(),
+        "{}",
+        String::from_utf8_lossy(&published.stderr)
+    );
+    page.until("message counted", COUNTED_IN_U09TV).await;
+    assert!(page.errors.is_empty(), "{:?}", page.errors);
+    drop(chrome);
+}
+
+/// The real network, read only: the official lists downloaded by the page,
+/// relays probed and listened to from the browser.
+#[tokio::test]
+#[ignore = "needs web/build.sh, Google Chrome and BITCHAT_REAL_NETWORK=1"]
+async fn the_map_on_the_real_network() {
+    if std::env::var("BITCHAT_REAL_NETWORK").as_deref() != Ok("1") {
+        eprintln!("BITCHAT_REAL_NETWORK not 1: nothing done");
+        return;
+    }
+    if !ready() {
+        return;
+    }
+    let (chrome, mut page, _) = open_map(None, "area=u09").await;
+    page.until(
+        "relays listened",
+        &format!(
+            "{PANEL}.includes('live') && \
+             /connections: [1-9][0-9]* \\/ /.test({PANEL})"
+        ),
+    )
+    .await;
+    // Some time for the presences of the area to come.
+    tokio::time::sleep(Duration::from_secs(60)).await;
+    let state = page.state().await;
+    let status = &state["status"];
+    eprintln!(
+        "real network: {} cells, {} watched, relays {} listened, {} set aside, connections {} / {}",
+        state["cells"].as_array().map_or(0, Vec::len),
+        status["watched"],
+        status["relays"],
+        status["dropped_relays"].as_array().map_or(0, Vec::len),
+        status["connections_up"],
+        status["connections"],
+    );
+    let active: Vec<String> = state["cells"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|c| c["messages"].as_u64().unwrap_or(0) + c["presences"].as_u64().unwrap_or(0) > 0)
+        .map(|c| {
+            format!(
+                "{} ({} msg, {} presences)",
+                c["geohash"], c["messages"], c["presences"]
+            )
+        })
+        .collect();
+    eprintln!("active cells: {active:?}");
+    let shot = page
+        .call("Page.captureScreenshot", json!({ "format": "png" }))
+        .await;
+    let png = base64_decode(shot["data"].as_str().unwrap());
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/web-real-network.png");
+    std::fs::write(&path, png).unwrap();
+    eprintln!("screenshot: {}", path.display());
+    assert!(status["connections_up"].as_u64().unwrap_or(0) > 0);
+    assert!(page.errors.is_empty(), "{:?}", page.errors);
+    drop(chrome);
+}
+
+/// Standard base64, as DevTools sends screenshots.
+fn base64_decode(s: &str) -> Vec<u8> {
+    let value = |c: u8| match c {
+        b'A'..=b'Z' => c - b'A',
+        b'a'..=b'z' => c - b'a' + 26,
+        b'0'..=b'9' => c - b'0' + 52,
+        b'+' => 62,
+        _ => 63,
+    };
+    let bytes: Vec<u8> = s.bytes().filter(|&c| c != b'=').map(value).collect();
+    bytes
+        .chunks(4)
+        .flat_map(|q| {
+            let n = q.iter().fold(0u32, |n, &v| n << 6 | v as u32) << (6 * (4 - q.len()));
+            let b = n.to_be_bytes();
+            b[1..q.len()].to_vec()
+        })
+        .collect()
 }

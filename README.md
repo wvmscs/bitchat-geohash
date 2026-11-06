@@ -89,6 +89,24 @@ example shows the same counts without the map:
 cargo run --example watch -- u09 --depth 2
 ```
 
+## In the browser, without a server
+
+The map also runs entirely in the browser: the same page, with the monitor compiled to
+WebAssembly in a worker, its state kept in the browser's database. Build the static site, then
+serve its directory at the root of any web server:
+
+```sh
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.130   # the version in Cargo.toml
+web/build.sh                                       # target/web
+python3 -m http.server -d target/web 8000          # then http://localhost:8000/?area=u09t
+```
+
+The page's address takes the options of the command line: `?area=u09t&depth=2&strategy=a1`
+is `u09t --depth 2 --strategy a1`. What the browser cannot do: no Tor (the relays see the
+browser's IP address), no place names, and relay failures are opaque (a relay that refuses is
+retried like one that is down). The map runs while its tab is open.
+
 ## Documents
 
 - [docs/behind-proxy.md](docs/behind-proxy.md): behind a TLS proxy (Cloudflare Tunnel, NGINX,
