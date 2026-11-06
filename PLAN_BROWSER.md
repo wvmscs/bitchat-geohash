@@ -79,10 +79,10 @@ seulement si le projet réussit, sur décision de l'utilisateur.
 | Lot | Contenu | État |
 |---|---|---|
 | 1 | Cible wasm : dépendances par cible, `cargo check --target wasm32-unknown-unknown` | ✅ 36b0b56 |
-| 2 | `rt` et `ws` (natif identique à aujourd'hui, tests inchangés) | 🟨 |
-| 3 | `Store` mémoire + instantané (tests communs aux deux réalisations) | ⬜ |
-| 4 | Routes sans HTTP (`api::handle`) partagées avec axum | ⬜ |
-| 5 | Point d'entrée wasm, worker, `shim.js`, page | ⬜ |
+| 2 | `rt` et `ws` (natif identique à aujourd'hui, tests inchangés) | ✅ 9509904 |
+| 3 | `Store` mémoire + instantané (tests communs aux deux réalisations) | ✅ 809ea70 |
+| 4 | Routes sans HTTP (`service::Service`) partagées avec axum | ✅ 50f1165 |
+| 5 | Point d'entrée wasm, worker, `shim.js`, page | 🟨 |
 | 6 | Tests : node (logique), Chrome sans fenêtre par le protocole DevTools (page) | ⬜ |
 | 7 | Qualification : relais privé (événement de test `nak`), puis réseau réel ; snapshot | ⬜ |
 
@@ -106,3 +106,13 @@ seulement si le projet réussit, sur décision de l'utilisateur.
   sondes, téléchargement, listener, moniteur et ligne de commande natifs pour l'instant. Seule
   dépendance wasm à ce stade : `getrandom` (feature `js`, tirée par `k256`). Natif inchangé
   (tests et clippy identiques à `main`).
+- 2026-11-07 : lot 2, `rt` (tâches, minuteries, horloges, hasard) et `ws` (WebSocket texte) ;
+  listener et sondes dessus. En navigateur, les échecs WebSocket sont opaques : tout échec est
+  « down » (réessayé), sauf adresse malformée. Lot 3, `store::memory` : mêmes règles que le
+  schéma SQLite, garde la dernière liste par plateforme, la dernière sonde par relais, les
+  canaux et 7 jours de compteurs ; instantané JSON versionné, sauvé au plus toutes les 5 s et
+  à la fermeture ; mêmes tests pour les deux stockages (`tests/store_memory.rs`). Moniteur et
+  téléchargement des listes (reqwest, `fetch` du navigateur) sur les deux cibles. Lot 4,
+  `src/service` : vues, commandes, changement de zone et diffusion des deltas sortis du
+  serveur ; `Service` répond aux requêtes de la page sans HTTP, mêmes codes et corps
+  (`tests/service.rs`). Natif inchangé : 193 tests, clippy 0.
