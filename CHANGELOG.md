@@ -2,16 +2,17 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-06
+
 ### Added
-- Relay strategy selector (lot 27, D28): `--strategy apps|airhop|a0|a1`, and a selector in the
+- Relay strategy selector: `--strategy apps|airhop|a0|a1`, and a selector in the
   panel. The map listens where the chosen strategy reads (by default, the apps' choice); the
   counts then show the people a phone following it would reach. `POST /api/strategy` starts the
   monitor again on the same area; refused on a public map. geohash-relays from the tag
-  `strategies-2026.11.06` of its branch `strategies` (with `docs/scenarios.md`, the document
-  the "scenarios" link opens once released).
+  `strategies-2026.11.06` of its branch `strategies`.
 
 - For every strategy, whether each cell's phones exchange with bitchat iOS and Android as
-  released, unchanged (lot 28, D29): a green, red or grey badge per app in the cell's details,
+  released, unchanged: a green, red or grey badge per app in the cell's details,
   and in the panel the number of watched cells that exchange. Under the apps' strategy, iOS
   with Android.
 
