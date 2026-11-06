@@ -29,7 +29,7 @@ rusqlite = { version = "0.41", features = ["bundled"] }
 # Relay list downloads (24 h reload). No bundled crypto provider: the ring one
 # is installed process-wide, as for the WebSocket connections.
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
-sha2 = "0.10"
+sha2 = "0.11"
 # Web server of step 2 (feature `server`).
 axum = { version = "0.8", optional = true, default-features = false, features = ["tokio", "http1", "json", "query"] }
 # TLS for the server (lot 13 bis): HTTP/1.1 and HTTP/2 negotiated by ALPN.
