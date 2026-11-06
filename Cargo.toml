@@ -26,14 +26,16 @@ serde_json = "1"
 thiserror = "2"
 tracing = "0.1"
 sha2 = "0.10"
+# Relay list downloads (24 h reload); the browser's `fetch` in wasm32.
+reqwest = { version = "0.13", default-features = false }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { version = "1.54", features = ["rt-multi-thread", "net", "time"] }
 tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rusqlite = { version = "0.41", features = ["bundled"] }
-# Relay list downloads (24 h reload). No bundled crypto provider: the ring one
-# is installed process-wide, as for the WebSocket connections.
+# Natively, TLS without a bundled crypto provider: the ring one is installed
+# process-wide, as for the WebSocket connections.
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
 # Web server of step 2 (feature `server`).
 axum = { version = "0.8", optional = true, default-features = false, features = ["tokio", "http1", "json", "query"] }

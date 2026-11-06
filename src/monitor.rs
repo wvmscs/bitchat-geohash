@@ -25,7 +25,6 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 
 use tokio::sync::{broadcast, mpsc, oneshot};
-use tokio::task::JoinHandle;
 
 use crate::aggregate::{Aggregator, AggregatorConfig, CellStats, MeshStats, Rejection};
 use crate::channels::{DEFAULT_MAX_CHANNELS, Level, enumerate, normalize};
@@ -37,6 +36,7 @@ use crate::probe::{
     PROBE_CONCURRENCY, PROBE_TIMEOUT, Status, Verdict, probe_new_relays, probe_where,
 };
 use crate::reach::CellRelays;
+use crate::rt::{self, JoinHandle};
 use crate::store::{ChannelState, RelayListLoad, Store, StoreWriter, Write, sha256_hex};
 use crate::strategy::StrategyKind;
 
@@ -301,7 +301,7 @@ impl Monitor {
         let (store, recent) = if config.reload_lists {
             (store, BTreeMap::new())
         } else {
-            tokio::task::spawn_blocking(move || {
+            rt::blocking(move || {
                 let mut recent = BTreeMap::new();
                 for p in [Platform::Ios, Platform::Android] {
                     if let Some(last) = store.last_relay_list(p)? {
@@ -335,7 +335,7 @@ impl Monitor {
             loaded.push((platform, dir, last.sha256));
         }
         // Database work off the async threads; logging back here.
-        let (store, outcomes) = tokio::task::spawn_blocking(move || {
+        let (store, outcomes) = rt::blocking(move || {
             let mut store = store;
             let mut outcomes = Vec::new();
             for (platform, source, result) in fetched {
@@ -433,7 +433,7 @@ impl Monitor {
         // asked otherwise.
         let (reinstate_all, forget_descents) = (config.reinstate_all, config.forget_descents);
         let now = clock();
-        let (store, previously_retired, descents) = tokio::task::spawn_blocking(move || {
+        let (store, previously_retired, descents) = rt::blocking(move || {
             let mut store = store;
             let descents = if forget_descents {
                 let forgotten = store.descents()?;
@@ -503,7 +503,7 @@ impl Monitor {
         let store = if config.probe {
             let relays = plan.relays();
             let (fresh, now) = (config.verdicts_fresh_for.as_secs() as i64, clock());
-            let (store, recent) = tokio::task::spawn_blocking(move || {
+            let (store, recent) = rt::blocking(move || {
                 let mut recent = BTreeMap::new();
                 for relay in relays {
                     if let Some((at, status, detail)) = store.last_probe(&relay)?
@@ -622,14 +622,14 @@ impl Monitor {
             let (concurrency, timeout) =
                 (state.config.probe_concurrency, state.config.probe_timeout);
             let tx = state.probed_tx.clone();
-            tokio::spawn(async move {
+            rt::spawn(async move {
                 let verdicts = probe_new_relays(&plan, &known, concurrency, timeout).await;
                 if !verdicts.is_empty() {
                     let _ = tx.send(verdicts);
                 }
             });
         }
-        let task = tokio::spawn(state.run(rx, events_rx, reload_rx, probed_rx));
+        let task = rt::spawn(state.run(rx, events_rx, reload_rx, probed_rx));
         Ok(Monitor { tx, events, task })
     }
 
@@ -766,8 +766,7 @@ impl State {
         mut reloads: mpsc::UnboundedReceiver<Reloaded>,
         mut probed: mpsc::UnboundedReceiver<BTreeMap<String, Verdict>>,
     ) -> Result<Store> {
-        let mut ticker = tokio::time::interval(self.config.tick);
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let mut ticker = rt::interval(self.config.tick);
         let every = self.config.reload_every;
         // The first reload `every` after the oldest list was loaded (it may
         // come from the database).
@@ -775,11 +774,10 @@ impl State {
             let age = (self.now() - l.loaded_at).clamp(0, every.as_secs() as i64) as u64;
             every - Duration::from_secs(age)
         });
-        let mut reload_timer = self.lists.is_some().then(|| {
-            let mut t = tokio::time::interval_at(tokio::time::Instant::now() + first, every);
-            t.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-            t
-        });
+        let mut reload_timer = self
+            .lists
+            .is_some()
+            .then(|| rt::interval_after(first, every));
         loop {
             tokio::select! {
                 Some(event) = events.recv() => self.on_event(event),
@@ -804,7 +802,7 @@ impl State {
         }
         self.listener.shutdown().await;
         let writer = self.writer;
-        tokio::task::spawn_blocking(move || writer.close())
+        rt::blocking(move || writer.close())
             .await
             .map_err(|_| Error::StoreClosed)?
     }
@@ -831,7 +829,7 @@ impl State {
         );
         let clock = self.config.listener.clock.clone();
         let tx = self.reload_tx.clone();
-        tokio::spawn(async move {
+        rt::spawn(async move {
             let mut out = Reloaded {
                 loads: Vec::new(),
                 failures: Vec::new(),
@@ -1051,7 +1049,7 @@ impl State {
                 self.probed_tx.clone(),
             );
             let (concurrency, timeout) = (self.config.probe_concurrency, self.config.probe_timeout);
-            tokio::spawn(async move {
+            rt::spawn(async move {
                 let _ = tx.send(probe_new_relays(&plan, &known, concurrency, timeout).await);
             });
         }

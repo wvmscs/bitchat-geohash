@@ -50,29 +50,36 @@ impl ListSource {
 pub const FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Reads a list. A list without any usable relay is an error: it would
-/// leave every channel without relay.
-#[cfg(not(target_arch = "wasm32"))]
+/// leave every channel without relay. In the browser, only URLs (and the
+/// server must allow the page's origin: CORS).
 pub async fn fetch(
     source: &ListSource,
     platform: Platform,
 ) -> crate::Result<(String, RelayDirectory)> {
     let csv = match source {
         ListSource::Url(url) => {
+            #[cfg(not(target_arch = "wasm32"))]
             crate::install_crypto_provider();
-            let client = reqwest::Client::builder().timeout(FETCH_TIMEOUT).build()?;
-            client
-                .get(url)
-                .send()
-                .await?
-                .error_for_status()?
-                .text()
-                .await?
+            let download = async {
+                reqwest::Client::new()
+                    .get(url)
+                    .send()
+                    .await?
+                    .error_for_status()?
+                    .text()
+                    .await
+            };
+            crate::rt::timeout(FETCH_TIMEOUT, download)
+                .await
+                .map_err(|_| {
+                    std::io::Error::new(std::io::ErrorKind::TimedOut, "download timed out")
+                })??
         }
         ListSource::Path(path) => {
             let path = path.clone();
-            tokio::task::spawn_blocking(move || std::fs::read_to_string(path))
+            crate::rt::blocking(move || std::fs::read_to_string(path))
                 .await
-                .map_err(|e| std::io::Error::other(e.to_string()))??
+                .map_err(|_| std::io::Error::other("file read stopped"))??
         }
     };
     let dir = RelayDirectory::parse(&csv, platform);

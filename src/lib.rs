@@ -12,8 +12,8 @@
 //! `bitchat-geohash` binary.
 //!
 //! Browser build (`wasm32-unknown-unknown`, without default features): the
-//! everything but the monitor and the store for now (they follow), on the
-//! browser's tasks, timers and WebSockets (`rt`, `ws`).
+//! the monitor on the browser's tasks, timers and WebSockets (`rt`, `ws`),
+//! with an in-memory store saved as a snapshot (`store::memory`).
 
 pub mod aggregate;
 pub mod channels;
@@ -24,7 +24,6 @@ pub mod error;
 #[cfg(feature = "geocode")]
 pub mod geocode;
 pub mod listener;
-#[cfg(not(target_arch = "wasm32"))]
 pub mod monitor;
 pub mod nostr;
 pub mod plan;

@@ -3,10 +3,12 @@
 
 //! What the map keeps (lot 4): the records, and the store that holds them.
 //! Native build: SQLite with versioned schema migrations (`sqlite`).
+//! Browser build: in memory, saved as a snapshot (`memory`).
 //!
 //! Times are Unix seconds, always given by the caller (injected clock). The
 //! schema holds no pubkey, nickname or message content (spec §5).
 
+pub mod memory;
 #[cfg(not(target_arch = "wasm32"))]
 mod migrations;
 #[cfg(not(target_arch = "wasm32"))]
@@ -16,6 +18,10 @@ use sha2::{Digest, Sha256};
 
 use crate::directory::Platform;
 
+#[cfg(target_arch = "wasm32")]
+pub use memory::{
+    MemoryStore as Store, MemoryWriter as StoreWriter, SNAPSHOT_VERSION as SCHEMA_VERSION,
+};
 #[cfg(not(target_arch = "wasm32"))]
 pub use migrations::SCHEMA_VERSION;
 #[cfg(not(target_arch = "wasm32"))]

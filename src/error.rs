@@ -31,6 +31,12 @@ pub enum Error {
     },
     #[error("the store writer thread has stopped")]
     StoreClosed,
+    /// A record the store's rules refuse (in-memory store).
+    #[error("invalid record: {0}")]
+    InvalidRecord(String),
+    /// A saved snapshot of the in-memory store that cannot be read.
+    #[error("saved state unreadable: {0}")]
+    Snapshot(String),
     #[error("listening on {0} (not a loopback address) needs allow_remote")]
     RemoteListen(String),
     #[error("listening on {0} without TLS needs insecure_remote")]
@@ -60,7 +66,6 @@ pub enum Error {
     Geocode(String),
     #[error("no place found for this text: try a town, an address, or #geohash")]
     PlaceNotFound,
-    #[cfg(not(target_arch = "wasm32"))]
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
     /// Boxed: it carries an HTTP response and would bloat every `Result`.
