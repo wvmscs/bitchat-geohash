@@ -91,9 +91,6 @@ cargo run --example watch -- u09 --depth 2
 
 ## Documents
 
-- [SPECIFICATIONS.md](SPECIFICATIONS.md): what it does and why (in French).
-- [PLAN_ET1.md](PLAN_ET1.md), [PLAN_ET2.md](PLAN_ET2.md): progress, decisions and
-  measurements (in French).
 - [docs/behind-proxy.md](docs/behind-proxy.md): behind a TLS proxy (Cloudflare Tunnel, NGINX,
   Caddy).
 - [AGENTS.md](AGENTS.md): layout, invariants and commands for contributors.

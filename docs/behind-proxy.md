@@ -7,7 +7,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 Off the loopback the map travels in HTTPS, unless `--insecure-remote`. Instead of a
 certificate given to the map (`--tls-cert`, `--tls-key`), a proxy in front can do the TLS and
-send the requests in clear HTTP to the map's port (decision D25):
+send the requests in clear HTTP to the map's port:
 
 ```sh
 bitchat-geohash u09t --behind-proxy https://map.example.org             # proxy on this machine

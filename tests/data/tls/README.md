@@ -1,4 +1,4 @@
-# Test TLS material (lot 13 bis)
+# Test TLS material
 
 Frozen files for `tests/tls.rs`. **Test only: never trust `ca.pem` outside the tests.**
 

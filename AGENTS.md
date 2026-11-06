@@ -7,11 +7,7 @@ Guidance for coding agents (and humans) working in this crate.
 `bitchat-geohash`: live monitor of BitChat location channels (geohash). It enumerates the
 channels inside a geohash, computes the relays the iOS and Android apps use for each one,
 listens to kinds 20000/20001 there, and aggregates activity per cell, without personal data.
-The spec is [SPECIFICATIONS.md](SPECIFICATIONS.md); progress is tracked in
-[PLAN_ET1.md](PLAN_ET1.md) (step 1, done) and [PLAN_ET2.md](PLAN_ET2.md) (step 2).
-
-Step 1 is the Rust library. Step 2 adds an internal web server in Rust (axum), not Node.js.
-Step 3 adds a Swift UI through `uniffi`; the Swift package lives in `swift/`.
+A Rust library, and an internal web server in Rust (axum, feature `server`) that serves the map.
 
 ## Constraints
 
@@ -25,8 +21,7 @@ Step 3 adds a Swift UI through `uniffi`; the Swift package lives in `swift/`.
 - Edit or regenerate `tests/data/*.csv` or `tests/data/tls/`: they are frozen for
   reproducibility (the TLS files are test-only; their CA key was deleted).
 - Edit a migration that has been committed (see invariant 4).
-- Add dependencies without discussion. Approved: those listed in lot 0 of `PLAN_ET1.md`,
-  lot 10 of `PLAN_ET2.md`, and `geohash-lookup` (lot 23, feature `geocode`).
+- Add dependencies without discussion. Approved: those already in `Cargo.toml`.
 - Edit `src/server/assets/leaflet/`: Leaflet 1.9.4 as released (a test checks its SHA-256).
 - Remove existing functionality.
 
@@ -35,8 +30,6 @@ Step 3 adds a Swift UI through `uniffi`; the Swift package lives in `swift/`.
 - Follow existing naming conventions.
 - Add comments for complex logic.
 - Update documentation when adding features.
-- Keep the plan of the current step (`PLAN_ET2.md`) up to date: tick the boxes, update the
-  dashboard, add a dated line to the journal, record decisions in the decisions table.
 - Before each commit, run the commands listed under Commands.
 
 ### Others
@@ -53,8 +46,7 @@ Step 3 adds a Swift UI through `uniffi`; the Swift package lives in `swift/`.
    `tests/common/`). Be DRY.
 4. Run the commands listed under Commands.
 5. Update tests for new functionality.
-6. Update `PLAN_ET2.md`.
-7. Keep commits focused and atomic.
+6. Keep commits focused and atomic.
 
 ## Environment
 
@@ -71,7 +63,7 @@ Step 3 adds a Swift UI through `uniffi`; the Swift package lives in `swift/`.
 1. All tests pass.
 2. No errors, no clippy warnings.
 3. Code is formatted (`cargo fmt`).
-4. Documentation updated (`SPECIFICATIONS.md`, `PLAN_ET2.md`, rustdoc).
+4. Documentation updated (README, rustdoc).
 5. Changelog entry added (`CHANGELOG.md` in this crate).
 
 ### PR Template
@@ -137,16 +129,14 @@ Tests run offline: the frozen CSVs from `tests/data/` and the local `TestRelay`
 
 ## Layout
 
-Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
-
 - `src/nostr.rs`: NIP-01 subset: `Event` (id, Schnorr verification), `Filter`, `unix_now`.
 - `src/cli.rs`: command-line options shared by the binary and `watch` (`cli::parse`; each
   caller reads its own extra options). No argument-parsing dependency.
 - `src/directory.rs`: `RelayDirectory` (CSV parsing with each app's rules, normalisation,
   iOS conflict check) re-exported from `geohash-relays`; list sources and download here.
-- `src/strategy.rs`: the relay strategy the map listens with (`StrategyKind`, D28): the
+- `src/strategy.rs`: the relay strategy the map listens with (`StrategyKind`): the
   apps' choice by default, or AirHop's, A0, A1 from `geohash-relays`.
-- `src/reach.rs`: whether a cell's phones exchange with the reference apps as released (D29).
+- `src/reach.rs`: whether a cell's phones exchange with the reference apps as released.
 - `src/select.rs`: relay choice per channel (`closest`, `select_both`) from `geohash-relays`,
   wrapped to return this crate's `Error`. Fix selection bugs in `geohash-relays`, not here.
 - `src/channels.rs`: `Level`, channel enumeration.
@@ -167,27 +157,27 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
 - `src/main.rs`: the `bitchat-geohash` binary (`required-features = ["server"]`): server
   options, start-up summary, `map: <url>` on stderr (read by `tests/cli.rs`), exit codes 2
   (command line) and 1 (start-up).
-- `examples/watch.rs`, `tests/`, `tests/data/`, `swift/`.
+- `examples/watch.rs`, `tests/`, `tests/data/`.
 
 ## Invariants (do not break these)
 
 1. **No personal data leaves memory.** `CellStats`, the database schema, logs and anything
    sent to a UI hold counts only: no pubkey, no nickname, no message content. Pubkeys are kept
-   in memory only for the aggregation window. Counts are shown at every level (D20); an
+   in memory only for the aggregation window. Counts are shown at every level; an
    optional *k* threshold (`k_threshold`, default 0 = none) hides participant counts below *k*
    at level 6. A test asserts the schema has no forbidden column; extend it, and the snapshot
    tests, when you add fields.
 2. **Read-only on relays.** Never publish an event, never answer NIP-42 AUTH (the app does
    not). `CLOSED auth-required:` marks the relay unusable, without retry.
 3. **Mirror the app's relay choice** by default (`--strategy apps`). Another strategy
-   (`--strategy airhop|a0|a1`, or the page's selector, D28) makes the map listen where that
+   (`--strategy airhop|a0|a1`, or the page's selector) makes the map listen where that
    strategy reads, for study: it never changes what the apps-strategy code below does. The 5
    relays closest to each channel's centre, with each
    app's own rule (`RelayDirectory::parse(csv, platform)`, `closest`): iOS keeps one entry per
    normalised host and sorts by (distance, host); Android keeps raw lines (`host` and
    `host:443` are two entries) and sorts by distance only, stable. Exactly 5, no tie beyond.
    iOS list and Android list both; one connection and one probe per server. An iOS list with a
-   host at two coordinates is rejected as the app does (D18). Dead relays are set aside,
+   host at two coordinates is rejected as the app does. Dead relays are set aside,
    never replaced by the next one.
 4. **Migrations are append-only.** One numbered file per change, applied in order inside a
    transaction, version in `PRAGMA user_version`. Never edit or reorder a committed migration;
@@ -196,7 +186,7 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
    (default 15 min) leaves the filters, and is reinstated only on explicit request. Every
    retirement and reinstatement is logged at INFO. The state survives a restart.
    Channels added by a descent survive a restart too (`origin = 'descent'`), unless
-   `forget_descents`. Preview channels (`Monitor::preview`, D21) are the exception: never
+   `forget_descents`. Preview channels (`Monitor::preview`) are the exception: never
    saved nor retired, they leave the plan when the preview ends (`MonitorEvent::Removed`).
 6. **Count each event once.** Deduplicate by event `id` across relays; reject bad signatures,
    kinds other than 20000/20001 and `g` tags outside the plan.
@@ -208,27 +198,27 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
 - The library must build and test without the `server` feature: keep server code under
   `src/server/` and `#[cfg(feature = "server")]`; server tests start with
   `#![cfg(feature = "server")]`.
-- No CDN: every file the page loads is built in (D10); a new asset gets a line in
+- No CDN: every file the page loads is built in; a new asset gets a line in
   `assets.rs`. Only the map tiles come from outside.
 - Page text, like logs, is in English. Strings from relays or relay lists go through
   `textContent` (`el()` in `app.js`), never `innerHTML`.
-- HTTPS (D17): make a certificate the browser trusts with `mkcert -install` then
+- HTTPS: make a certificate the browser trusts with `mkcert -install` then
   `mkcert localhost 127.0.0.1 ::1` (gives `localhost+2.pem` and `localhost+2-key.pem`), and pass
   them with `--tls-cert` / `--tls-key`. HTTP/2 then carries every SSE stream of the browser on
   one connection (HTTP/1.1 allows 6 per host). Never commit these files. A non-local address
   needs `--allow-remote` and TLS, or `--insecure-remote`, or a TLS proxy in front
-  (`--behind-proxy`, D25, `docs/behind-proxy.md`): then only the proxy's addresses, with
+  (`--behind-proxy`, `docs/behind-proxy.md`): then only the proxy's addresses, with
   HTTPS upstream and the public name, are served.
-- A hidden tab closes its SSE stream after 10 s and reopens it when shown (D22): over
+- A hidden tab closes its SSE stream after 10 s and reopens it when shown: over
   HTTP/1.1 open streams would otherwise use up the 6 connections per host, and a new tab
   could not load at all. Keep it when touching `connect()`.
 - Tiles must be requested with a `Referer` (OSM tile policy): the tile layer sets
   `referrerPolicy: "strict-origin-when-cross-origin"`, overriding the page's `no-referrer`.
   Without it Firefox gets 403 "Access blocked".
-- Hovering a watched cell previews the level below (`POST /api/preview`, D21): the page
+- Hovering a watched cell previews the level below (`POST /api/preview`): the page
   draws those channels inside the cell with `interactive: false`, so the hover stays on the
   cell. Going up a level (list or URL) refits the map to the coarser cells in view.
-- Map layers (lot 16): relay pins (`.pin`, colour = status, square = one app, faded = not
+- Map layers: relay pins (`.pin`, colour = status, square = one app, faded = not
   listened to) on a ring when they share coordinates (`ringed`, `ringAnchors` in `view.js`);
   meshes (`MeshView`, levels `Params.mesh_levels`) replace the cells when shown. Both are
   updated in place, so an open tooltip or popup survives a delta.
@@ -294,9 +284,10 @@ Step 1 (see `PLAN_ET1.md`), then step 2 (`PLAN_ET2.md`):
 
 ## Style
 
-- Code, comments and rustdoc in English; `SPECIFICATIONS.md` and `PLAN_ET1.md` in French.
-- `thiserror` error type in the library (`Error`), so callers (and the FFI later) can match.
-- Keep the public API FFI-friendly: owned types, strings, no lifetimes in signatures.
+- Code, comments, rustdoc and documentation in English.
+- `thiserror` error type in the library (`Error`), so callers can match.
+- Keep the public API FFI-friendly (a Swift UI may come): owned types, strings, no lifetimes in
+  signatures.
 - `tracing` for logs, never `println!` in library code (examples may print).
 - SQLite access goes through one dedicated writer thread; never block a tokio task on it.
-- Do not commit `target/`, `swift/.build/`, `.env` or database files (see `.gitignore`).
+- Do not commit `target/`, `.env` or database files (see `.gitignore`).
