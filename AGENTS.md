@@ -141,7 +141,12 @@ Tests run offline: the frozen CSVs from `tests/data/` and the local `TestRelay`
   wrapped to return this crate's `Error`. Fix selection bugs in `geohash-relays`, not here.
 - `src/channels.rs`: `Level`, channel enumeration.
 - `src/plan.rs`: `ListenPlan` (relay → channels), filters, retire/reinstate, diff.
-- `src/store/`: SQLite `Store` and `migrations/NNNN_name.sql`.
+- `src/store/`: the records (`mod.rs`); SQLite `Store` and `StoreWriter` (`sqlite.rs`) and
+  `migrations/NNNN_name.sql`; the browser build's store, in memory and saved as a JSON
+  snapshot (`memory.rs`, built natively too: `tests/store_memory.rs` checks both stores).
+- `src/rt.rs`, `src/ws.rs`: tasks, timers, clocks and a text WebSocket, tokio and
+  tokio-tungstenite natively, the browser's in `wasm32`. Library code uses them, not tokio's
+  runtime or tungstenite directly.
 - `src/probe.rs`: relay probe, from `probe.rs`.
 - `src/aggregate.rs`: deduplication, window, inactivity, `CellStats`.
 - `src/listener.rs`: one tokio task per relay.
@@ -150,10 +155,15 @@ Tests run offline: the frozen CSVs from `tests/data/` and the local `TestRelay`
 - `src/server/` (feature `server`, on by default): axum router; `assets.rs` lists the files
   built into the binary from `src/server/assets/` (page, `app.js`, `view.js`, `app.css`,
   Leaflet). `view.js` holds the page's pure helpers (no DOM), tested with node.
-  `model.rs`: the JSON views sent to the browser, SSE messages and deltas; `api.rs`: `/api/*`
-  routes and the SSE stream; `guard.rs`: `Host`/`Origin`/`Content-Type` checks and security
+  `api.rs`: `/api/*` routes and the SSE stream over HTTP; `guard.rs`: `Host`/`Origin`/`Content-Type` checks and security
   headers; `proxy.rs`: behind a TLS proxy (checks, start probe); `tls.rs`: optional TLS (certificate and key files, ALPN `h2`/`http/1.1`);
   `mod.rs`: `serve`, `Server`, the task that pushes the deltas.
+- `src/service/` (feature `server`, or the `wasm32` target): the map's service without its
+  transport, shared by the web server and the browser build. `model.rs` (re-exported as
+  `server::model`): the JSON views sent to the browser, SSE messages and deltas; `api.rs`: the
+  `/api/*` answers and commands, and `handle` (a request without HTTP); `area.rs`: area and
+  strategy changes; `mod.rs`: the task that publishes the deltas, and `Service` (the page's
+  requests and event stream without a web server).
 - `src/main.rs`: the `bitchat-geohash` binary (`required-features = ["server"]`): server
   options, start-up summary, `map: <url>` on stderr (read by `tests/cli.rs`), exit codes 2
   (command line) and 1 (start-up).
@@ -226,7 +236,7 @@ Tests run offline: the frozen CSVs from `tests/data/` and the local `TestRelay`
   inside of an unfilled shape takes no hover nor click.
 - Every route goes through `guard.rs`: `Host` checked (DNS rebinding), `POST` only with JSON and
   the server's own `Origin`, CSP. Keep it that way for new routes; a refusal is logged.
-- What the browser receives obeys invariant 1: counts only. Everything goes through `server::model`,
+- What the browser receives obeys invariant 1: counts only. Everything goes through `service::model`,
   built field by field from the library types (no `serde` on them); a new field gets its
   line in the privacy test (`tests/model.rs`). With a k threshold set, a hidden participant count is `"low"`.
 

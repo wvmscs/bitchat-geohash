@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: 2026 William VITAL, FR (wvmscs)
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! `/api/*`: state, SSE stream and commands.
+//! `/api/*` over HTTP: state, SSE stream and commands. The answers and the
+//! commands are `crate::service::api`'s.
 
 use std::convert::Infallible;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use axum::Json;
@@ -15,20 +16,13 @@ use axum::http::StatusCode;
 use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use futures_util::StreamExt;
-use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::sync::{broadcast, watch};
 
-use super::area::Holder;
-use super::model::{Published, Push};
-use crate::error::Error;
-
-/// The state sent to the browsers: the last one published, and the channel
-/// its deltas go out on.
-pub(crate) struct Live {
-    pub(crate) published: Mutex<Published>,
-    pub(crate) tx: broadcast::Sender<Arc<Push>>,
-}
+pub(crate) use crate::service::api::ApiError;
+use crate::service::api::{self as commands, DescendBody, Live, ReinstateBody, StrategyBody};
+use crate::service::area::Holder;
+use crate::service::model::Push;
 
 #[derive(Clone)]
 pub(crate) struct AppState {
@@ -44,70 +38,10 @@ pub(crate) struct AppState {
     pub(crate) strategy_change: bool,
 }
 
-/// An error answer: `{"error": code, "message": ..., ...details}`.
-#[derive(Debug)]
-pub(crate) struct ApiError {
-    status: StatusCode,
-    body: Value,
-}
-
-impl ApiError {
-    pub(crate) fn new(status: StatusCode, code: &str, message: impl Into<String>) -> Self {
-        ApiError {
-            status,
-            body: json!({ "error": code, "message": message.into() }),
-        }
-    }
-
-    fn with(mut self, key: &str, value: Value) -> Self {
-        self.body[key] = value;
-        self
-    }
-}
-
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        (self.status, Json(self.body)).into_response()
-    }
-}
-
-impl From<Error> for ApiError {
-    fn from(e: Error) -> Self {
-        let message = e.to_string();
-        match e {
-            Error::InvalidGeohash(g) => {
-                ApiError::new(StatusCode::BAD_REQUEST, "invalid_geohash", message)
-                    .with("geohash", json!(g))
-            }
-            Error::TooManyChannels { count, max } => {
-                ApiError::new(StatusCode::CONFLICT, "too_many_channels", message)
-                    .with("count", json!(count))
-                    .with("max", json!(max))
-            }
-            Error::OutsideArea { geohash, start } => {
-                ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, "outside_area", message)
-                    .with("geohash", json!(geohash))
-                    .with("start", json!(start))
-            }
-            Error::NoFinerLevel(g) => {
-                ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, "no_finer_level", message)
-                    .with("geohash", json!(g))
-            }
-            Error::MonitorStopped => {
-                ApiError::new(StatusCode::SERVICE_UNAVAILABLE, "monitor_stopped", message)
-            }
-            Error::AreaFixed => ApiError::new(StatusCode::CONFLICT, "area_fixed", message),
-            Error::StrategyFixed => ApiError::new(StatusCode::CONFLICT, "strategy_fixed", message),
-            Error::UnknownStrategy(name) => {
-                ApiError::new(StatusCode::BAD_REQUEST, "unknown_strategy", message)
-                    .with("strategy", json!(name))
-            }
-            Error::PlaceNotFound => {
-                ApiError::new(StatusCode::NOT_FOUND, "place_not_found", message)
-            }
-            Error::Geocode(_) => ApiError::new(StatusCode::BAD_GATEWAY, "geocode", message),
-            _ => ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "internal", message),
-        }
+        let status = StatusCode::from_u16(self.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        (status, Json(self.body)).into_response()
     }
 }
 
@@ -125,8 +59,7 @@ impl From<JsonRejection> for ApiError {
 
 /// `GET /api/state`: the full state, as in `hello`.
 pub(crate) async fn state(State(s): State<AppState>) -> Response {
-    let hello = s.live.published.lock().expect("not poisoned").hello();
-    Json(hello).into_response()
+    Json(s.live.hello()).into_response()
 }
 
 /// Frees a stream slot when the stream ends.
@@ -159,12 +92,7 @@ pub(crate) async fn events(State(s): State<AppState>) -> Response {
         .into_response();
     }
     let slot = Slot(s.streams.clone());
-    // Under the lock, so that no delta falls between `hello` and the
-    // subscription.
-    let (hello, rx) = {
-        let published = s.live.published.lock().expect("not poisoned");
-        (published.hello(), s.live.tx.subscribe())
-    };
+    let (hello, rx) = s.live.subscribe();
     let first = futures_util::stream::once(std::future::ready(sse_event(&hello)));
     let rest = futures_util::stream::unfold(
         (rx, s.stop.clone(), slot),
@@ -190,28 +118,13 @@ pub(crate) async fn events(State(s): State<AppState>) -> Response {
         .into_response()
 }
 
-#[derive(Deserialize)]
-pub(crate) struct DescendBody {
-    geohash: String,
-}
-
 /// `POST /api/descend {"geohash": "u09tv"}`.
 pub(crate) async fn descend(
     State(s): State<AppState>,
     body: Result<Json<DescendBody>, JsonRejection>,
 ) -> Result<Json<Value>, ApiError> {
     let Json(body) = body?;
-    tracing::info!(geohash = %body.geohash, "command: descend");
-    let added = s
-        .holder
-        .get()
-        .await?
-        .descend(&body.geohash)
-        .await
-        .inspect_err(|e| {
-            tracing::info!(geohash = %body.geohash, error = %e, "descend refused");
-        })?;
-    Ok(Json(json!({ "added": added })))
+    commands::descend(&s.holder, body).await.map(Json)
 }
 
 /// `POST /api/preview {"geohash": "u09tv"}`: listens for a while to the
@@ -221,25 +134,7 @@ pub(crate) async fn preview(
     body: Result<Json<DescendBody>, JsonRejection>,
 ) -> Result<Json<Value>, ApiError> {
     let Json(body) = body?;
-    tracing::debug!(geohash = %body.geohash, "command: preview");
-    let added = s
-        .holder
-        .get()
-        .await?
-        .preview(&body.geohash)
-        .await
-        .inspect_err(|e| {
-            tracing::info!(geohash = %body.geohash, error = %e, "preview refused");
-        })?;
-    Ok(Json(json!({ "added": added })))
-}
-
-#[derive(Deserialize)]
-pub(crate) struct ReinstateBody {
-    #[serde(default)]
-    channels: Vec<String>,
-    #[serde(default)]
-    all: bool,
+    commands::preview(&s.holder, body).await.map(Json)
 }
 
 /// `POST /api/reinstate {"channels": [...]}` or `{"all": true}`.
@@ -248,28 +143,7 @@ pub(crate) async fn reinstate(
     body: Result<Json<ReinstateBody>, JsonRejection>,
 ) -> Result<Json<Value>, ApiError> {
     let Json(body) = body?;
-    let back = if body.all {
-        tracing::info!("command: reinstate all");
-        s.holder.get().await?.reinstate_all().await?
-    } else if !body.channels.is_empty() {
-        tracing::info!(channels = body.channels.len(), "command: reinstate");
-        s.holder.get().await?.reinstate(body.channels).await?
-    } else {
-        return Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
-            "bad_request",
-            "expected {\"channels\": [...]} or {\"all\": true}",
-        ));
-    };
-    Ok(Json(json!({ "reinstated": back })))
-}
-
-/// Tells the pages which area is being changed to (`None`: no more).
-pub(crate) fn announce_area(live: &Live, changing: Option<String>) {
-    let mut published = live.published.lock().expect("not poisoned");
-    if let Some(push) = published.set_changing(changing) {
-        let _ = live.tx.send(Arc::new(push));
-    }
+    commands::reinstate(&s.holder, body).await.map(Json)
 }
 
 /// `POST /api/area {"geohash": "u09t"}`: watches that area instead (lot 19).
@@ -292,32 +166,19 @@ pub(crate) async fn area(
                 .inspect_err(|e| {
                     tracing::info!(error = %e, "area: nothing found for the text typed");
                 })?;
-            (r.geohash, r.place)
+            (r.geohash, serde_json::json!(r.place))
         }
-        None => (body.geohash, None),
+        None => (body.geohash, Value::Null),
     };
     #[cfg(not(feature = "geocode"))]
-    let (geohash, place) = (body.geohash, None::<()>);
-    tracing::info!(%geohash, "command: area");
-    // Every page shows the change at once, whoever asked (the console over
-    // the map, another tab), not only when the new area is there (lot 25).
-    let config = s
-        .holder
-        .change(&geohash, |area| {
-            announce_area(&s.live, Some(area.to_owned()))
-        })
+    let (geohash, place) = (body.geohash, Value::Null);
+    commands::area(&s.holder, &s.live, geohash, place)
         .await
-        .inspect_err(|e| {
-            tracing::info!(%geohash, error = %e, "area change refused");
-            announce_area(&s.live, None);
-        })?;
-    Ok(Json(
-        json!({ "start": config.start, "depth": config.depth, "place": place }),
-    ))
+        .map(Json)
 }
 
 #[cfg(feature = "geocode")]
-#[derive(Deserialize)]
+#[derive(serde::Deserialize)]
 pub(crate) struct PlaceQuery {
     geohash: String,
 }
@@ -335,12 +196,9 @@ pub(crate) async fn place(
         .as_ref()
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "no_places", "place names are off"))?;
     let place = places.name(&q.geohash).await?;
-    Ok(Json(json!({ "geohash": q.geohash, "place": place })))
-}
-
-#[derive(Deserialize)]
-pub(crate) struct StrategyBody {
-    strategy: String,
+    Ok(Json(
+        serde_json::json!({ "geohash": q.geohash, "place": place }),
+    ))
 }
 
 /// `POST /api/strategy {"strategy": "a1"}`: listens with that relay strategy
@@ -352,15 +210,7 @@ pub(crate) async fn strategy(
     body: Result<Json<StrategyBody>, JsonRejection>,
 ) -> Result<Json<Value>, ApiError> {
     let Json(body) = body?;
-    if !s.strategy_change {
-        return Err(ApiError::new(
-            StatusCode::FORBIDDEN,
-            "strategy_fixed",
-            "this map is public: its relay strategy does not change from the page",
-        ));
-    }
-    let kind = crate::strategy::StrategyKind::parse(&body.strategy)?;
-    tracing::info!(strategy = %kind, "command: strategy");
-    let config = s.holder.change_strategy(kind).await?;
-    Ok(Json(json!({ "strategy": config.strategy.name() })))
+    commands::strategy(&s.holder, s.strategy_change, body)
+        .await
+        .map(Json)
 }

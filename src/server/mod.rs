@@ -8,13 +8,13 @@
 //!
 //! [`serve`] starts it around a running [`Monitor`]. One task follows the
 //! monitor's notifications and, at most once per `push_every`, computes the
-//! deltas once for every browser ([`model::Published`]).
+//! deltas once for every browser ([`model::Published`]). The views, the
+//! commands and that task are `crate::service`'s, shared with the browser
+//! build; here, HTTP, TLS, the proxy and the guard.
 
 mod api;
-mod area;
 mod assets;
 mod guard;
-pub mod model;
 mod proxy;
 mod tls;
 
@@ -31,16 +31,21 @@ use axum::routing::{get, post};
 use tokio::sync::{broadcast, watch};
 use tokio::task::JoinHandle;
 
-pub use area::Relaunch;
+pub use crate::service::Relaunch;
+/// The JSON views sent to the page (in `service`, shared with the browser
+/// build).
+pub use crate::service::model;
 pub use assets::Asset;
 pub use proxy::{Net, ProxyConfig};
 pub use tls::TlsFiles;
 
 use crate::error::{Error, Result};
 use crate::monitor::{Monitor, MonitorConfig};
-use api::{AppState, Live};
-use area::Holder;
-use model::{CellView, MESH_LEVELS, MeshView, Params, Published, RelayView, StatusView};
+use crate::service::api::Live;
+use crate::service::area::Holder;
+use crate::service::{push_loop, refresh};
+use api::AppState;
+use model::{Params, Published};
 
 /// The routes of the page and its static files.
 pub fn router() -> Router {
@@ -310,148 +315,4 @@ pub async fn serve_with(
         tracing::info!("map behind the proxy on {origin}/ (checked)");
     }
     Ok(server)
-}
-
-/// Follows the monitor's notifications; at most once per `every`, when
-/// something happened, publishes the deltas. After an area change, follows
-/// the new monitor. It never keeps the monitor between two uses, so that an
-/// area change can take it.
-async fn push_loop(
-    holder: Arc<Holder>,
-    live: Arc<Live>,
-    every: Duration,
-    mut stop: watch::Receiver<bool>,
-) {
-    let mut generation = holder.generation.subscribe();
-    let mut tick = tokio::time::interval(every);
-    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-    'monitor: loop {
-        generation.mark_unchanged();
-        let mut events = match holder.get().await {
-            Ok(m) => m.subscribe(),
-            // Changing: wait for the new one, and start the pages over
-            // from it (otherwise they would only get its deltas).
-            Err(_) => {
-                tokio::select! {
-                    _ = stop.changed() => break,
-                    _ = generation.changed() => {
-                        if let Ok(m) = holder.get().await
-                            && let Err(e) = reset(&m, &holder.config(), &live).await
-                        {
-                            tracing::warn!(error = %e, "cannot read the new monitor state");
-                            api::announce_area(&live, None);
-                        }
-                        continue 'monitor;
-                    }
-                }
-            }
-        };
-        let mut dirty = false;
-        loop {
-            tokio::select! {
-                _ = stop.changed() => break 'monitor,
-                _ = generation.changed() => {
-                    // A new area: every page starts over from a `hello`.
-                    if let Ok(m) = holder.get().await
-                        && let Err(e) = reset(&m, &holder.config(), &live).await
-                    {
-                        tracing::warn!(error = %e, "cannot read the new monitor state");
-                    }
-                    continue 'monitor;
-                }
-                event = events.recv() => match event {
-                    Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => dirty = true,
-                    // The old monitor of an area change: the new one comes.
-                    Err(broadcast::error::RecvError::Closed) => {
-                        tokio::select! {
-                            _ = stop.changed() => break 'monitor,
-                            _ = generation.changed() => {
-                                if let Ok(m) = holder.get().await
-                                    && let Err(e) = reset(&m, &holder.config(), &live).await
-                                {
-                                    tracing::warn!(error = %e, "cannot read the new monitor state");
-                                    api::announce_area(&live, None);
-                                }
-                                continue 'monitor;
-                            }
-                        }
-                    }
-                },
-                _ = tick.tick() => {
-                    if dirty {
-                        dirty = false;
-                        let done = match holder.get().await {
-                            Ok(m) => refresh(&m, &live).await,
-                            Err(_) => Ok(()),
-                        };
-                        if let Err(e) = done {
-                            tracing::warn!(error = %e, "cannot read the monitor state");
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// What the browsers are sent of a monitor.
-async fn read(
-    monitor: &Monitor,
-) -> Result<(Vec<CellView>, Vec<RelayView>, Vec<MeshView>, StatusView)> {
-    let cells: Vec<CellView> = monitor
-        .snapshot()
-        .await?
-        .iter()
-        .map(CellView::from)
-        .collect();
-    let relays: Vec<RelayView> = monitor
-        .relays()
-        .await?
-        .iter()
-        .map(RelayView::from)
-        .collect();
-    let mut meshes = Vec::new();
-    for precision in MESH_LEVELS {
-        meshes.extend(monitor.mesh(precision).await?.iter().map(MeshView::from));
-    }
-    let status = StatusView::from(&monitor.status().await?);
-    Ok((cells, relays, meshes, status))
-}
-
-/// After an area change: a new published state, sent whole (`hello`) to
-/// the open streams.
-async fn reset(monitor: &Monitor, config: &MonitorConfig, live: &Live) -> Result<()> {
-    let (cells, relays, meshes, status) = read(monitor).await?;
-    let mut published = live.published.lock().expect("not poisoned");
-    let old = published.params();
-    let mut params = Params::new(config, &old.tiles, &old.attribution);
-    params.geocode = old.geocode;
-    params.strategy_change = old.strategy_change;
-    // The sequence goes on: a page that missed the `hello` sees a gap and
-    // reconnects.
-    let seq = published.seq();
-    // Another change may have started since: the new `hello` says so.
-    let changing = published
-        .changing()
-        .filter(|g| *g != config.start)
-        .map(str::to_owned);
-    *published = Published::starting_at(params, seq);
-    published.set_changing(changing);
-    published.update(cells, relays, status);
-    published.update_meshes(meshes);
-    let _ = live.tx.send(Arc::new(published.hello()));
-    Ok(())
-}
-
-/// Reads the monitor state and sends what changed.
-async fn refresh(monitor: &Monitor, live: &Live) -> Result<()> {
-    let (cells, relays, meshes, status) = read(monitor).await?;
-    let mut published = live.published.lock().expect("not poisoned");
-    let mut pushes = published.update(cells, relays, status);
-    pushes.extend(published.update_meshes(meshes));
-    for push in pushes {
-        // No stream open: nobody to send to.
-        let _ = live.tx.send(Arc::new(push));
-    }
-    Ok(())
 }

@@ -29,6 +29,7 @@ pub enum Relaunch {
 }
 
 impl Relaunch {
+    #[cfg(not(target_arch = "wasm32"))]
     fn db(&self) -> &str {
         match self {
             Relaunch::Sources { db, .. } | Relaunch::Fixed { db, .. } => db,
@@ -96,13 +97,13 @@ impl Holder {
             .take()
             .ok_or(Error::MonitorStopped)?;
         let mut shared = shared;
-        let until = tokio::time::Instant::now() + RELEASE;
+        let since = crate::rt::Instant::now();
         loop {
             match Arc::try_unwrap(shared) {
                 Ok(m) => return Ok(m),
-                Err(back) if tokio::time::Instant::now() < until => {
+                Err(back) if since.elapsed() < RELEASE => {
                     shared = back;
-                    tokio::time::sleep(Duration::from_millis(20)).await;
+                    crate::rt::sleep(Duration::from_millis(20)).await;
                 }
                 Err(back) => {
                     *self.monitor.write().await = Some(back);
@@ -171,6 +172,9 @@ impl Holder {
         // The lists of this session are in the database: no download.
         config.reload_lists = false;
         let store = self.take().await?.shutdown().await?;
+        // Natively nothing (the database file stays): `()`.
+        #[allow(clippy::let_unit_value)]
+        let kept = keep(&store);
         tracing::info!(
             area = %config.start,
             strategy = %config.strategy,
@@ -183,7 +187,7 @@ impl Holder {
                 // The store went with the failed start: open it again and
                 // go back to the previous configuration.
                 tracing::warn!(error = %e, area = %config.start, strategy = %config.strategy, "cannot start again, back to the previous configuration");
-                let store = Store::open(relaunch.db())?;
+                let store = reopen(relaunch, kept)?;
                 let mut back = old.clone();
                 (back.reinstate_all, back.forget_descents, back.reload_lists) =
                     (false, false, false);
@@ -198,4 +202,32 @@ impl Holder {
         self.generation.send_modify(|g| *g += 1);
         Ok(config)
     }
+}
+
+/// What opens the store again when a start fails (the store went with it):
+/// natively, the database file.
+#[cfg(not(target_arch = "wasm32"))]
+fn keep(_store: &Store) {}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn reopen(relaunch: &Relaunch, _kept: ()) -> Result<Store> {
+    Store::open(relaunch.db())
+}
+
+/// In the browser, its snapshot and where it is saved.
+#[cfg(target_arch = "wasm32")]
+fn keep(store: &Store) -> (String, Option<crate::store::memory::Saver>) {
+    (store.snapshot(), store.saver())
+}
+
+#[cfg(target_arch = "wasm32")]
+fn reopen(
+    _relaunch: &Relaunch,
+    (snapshot, saver): (String, Option<crate::store::memory::Saver>),
+) -> Result<Store> {
+    let mut store = Store::restore(&snapshot)?;
+    if let Some(saver) = saver {
+        store.set_saver(saver);
+    }
+    Ok(store)
 }

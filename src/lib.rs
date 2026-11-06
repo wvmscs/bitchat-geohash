@@ -33,6 +33,8 @@ pub mod rt;
 pub mod select;
 #[cfg(feature = "server")]
 pub mod server;
+#[cfg(any(feature = "server", target_arch = "wasm32"))]
+pub mod service;
 pub mod store;
 pub mod strategy;
 pub mod ws;

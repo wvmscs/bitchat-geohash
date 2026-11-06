@@ -349,7 +349,7 @@ fn snapshots_are_saved_now_and_then_and_at_flush() {
     let saved = Rc::new(RefCell::new(Vec::new()));
     let mut store = MemoryStore::open_in_memory().unwrap();
     let sink = saved.clone();
-    store.set_saver(Box::new(move |s| sink.borrow_mut().push(s)));
+    store.set_saver(Rc::new(move |s| sink.borrow_mut().push(s)));
     let writer = MemoryWriter::spawn(store);
     for i in 0..100 {
         writer

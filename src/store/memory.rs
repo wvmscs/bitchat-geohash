@@ -82,7 +82,7 @@ struct BucketRow {
 
 /// Called with the snapshot to keep, at most every [`SAVE_EVERY`] while
 /// writes come, and when the writer is flushed or closed.
-pub type Saver = Box<dyn FnMut(String)>;
+pub type Saver = std::rc::Rc<dyn Fn(String)>;
 
 pub struct MemoryStore {
     tables: Tables,
@@ -130,6 +130,10 @@ impl MemoryStore {
     /// Where snapshots go once a writer holds the store.
     pub fn set_saver(&mut self, saver: Saver) {
         self.saver = Some(saver);
+    }
+
+    pub fn saver(&self) -> Option<Saver> {
+        self.saver.clone()
     }
 
     pub fn schema_version(&self) -> Result<u32> {
@@ -421,7 +425,7 @@ impl MemoryStore {
             return;
         }
         let snapshot = self.snapshot();
-        if let Some(saver) = &mut self.saver {
+        if let Some(saver) = &self.saver {
             saver(snapshot);
             self.dirty = false;
             self.saved_at = Some(Instant::now());
