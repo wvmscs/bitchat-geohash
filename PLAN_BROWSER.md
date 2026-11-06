@@ -68,7 +68,7 @@ seulement si le projet réussit, sur décision de l'utilisateur.
 
 | Étape | Contenu | État |
 |---|---|---|
-| E1 | Carte seule, lecture : moteur wasm dans un worker, IndexedDB, site statique | 🟨 |
+| E1 | Carte seule, lecture : moteur wasm dans un worker, IndexedDB, site statique | ✅ 3f7c984 |
 | E2 | Console : envoi, clés, messages privés, groupes, dans le même moteur | ⬜ |
 | E3 | Onglets partagés (SharedWorker, sinon onglet meneur par Web Locks), export/import des clés | ⬜ |
 | E4 | Proxy local optionnel (Arti, un circuit par cellule, NIP-11 sans CORS) | ⬜ |
@@ -82,9 +82,9 @@ seulement si le projet réussit, sur décision de l'utilisateur.
 | 2 | `rt` et `ws` (natif identique à aujourd'hui, tests inchangés) | ✅ 9509904 |
 | 3 | `Store` mémoire + instantané (tests communs aux deux réalisations) | ✅ 809ea70 |
 | 4 | Routes sans HTTP (`service::Service`) partagées avec axum | ✅ 50f1165 |
-| 5 | Point d'entrée wasm, worker, `shim.js`, page | 🟨 |
-| 6 | Tests : node (logique), Chrome sans fenêtre par le protocole DevTools (page) | ⬜ |
-| 7 | Qualification : relais privé (événement de test `nak`), puis réseau réel ; snapshot | ⬜ |
+| 5 | Point d'entrée wasm, worker, `shim.js`, page | ✅ 5249ee6 |
+| 6 | Tests : Chrome sans fenêtre par le protocole DevTools (page), pilotés depuis Rust | ✅ 5249ee6 |
+| 7 | Qualification : relais privé (événement de test `nak`), puis réseau réel | ✅ 3f7c984 |
 
 ## Décisions
 
@@ -116,3 +116,16 @@ seulement si le projet réussit, sur décision de l'utilisateur.
   `src/service` : vues, commandes, changement de zone et diffusion des deltas sortis du
   serveur ; `Service` répond aux requêtes de la page sans HTTP, mêmes codes et corps
   (`tests/service.rs`). Natif inchangé : 193 tests, clippy 0.
+- 2026-11-07 : lots 5 à 7. `src/browser.rs` (`Engine` : options de la ligne de commande,
+  requêtes, flux, journal dans la console), `web/worker.js` (moteur, instantané et zone dans
+  IndexedDB), `web/shim.js` (redirige `fetch('/api/…')` et `EventSource('/api/events')` vers le
+  worker ; `app.js` inchangé), `web/build.sh` (site statique dans `target/web`, wasm 2,0 Mo).
+  Sauvegarde différée de 5 s en wasm (sinon les dernières écritures d'une rafale attendaient la
+  suivante). Tests de page pilotés depuis Rust plutôt que node (relais de test et signatures
+  déjà en Rust ; rien de neuf à installer). Qualification : Chrome sans fenêtre ; relais local
+  (connexion, cellules dessinées, message compté, descente, retrouvée après rechargement,
+  aucune erreur) ; `wss://relay.famillevital.club` en boucle fermée (`nak`, clé jetable) ;
+  réseau réel en lecture sur `u09` : listes officielles lues par la page (CORS `*`), 9 relais
+  écoutés, 6/9 connexions, 16 cellules avec des présences en 1 min (u09t : 41). Snapshot :
+  pas d'outillage pour une branche `*-brow` ; site servi localement à la demande (E5 pour
+  l'assemblage).
