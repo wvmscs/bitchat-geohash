@@ -18,7 +18,7 @@ k256 = { version = "0.13", default-features = false, features = ["schnorr", "std
 # bitchat-console (its decision D2), own repository.
 geohash-relays = { git = "https://github.com/wvmscs/geohash-relays.git", tag = "strategies-2026.11.06" }
 tokio = { version = "1.54", features = ["rt-multi-thread", "net", "sync", "macros", "time"] }
-tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 serde = { version = "1", features = ["derive"] }
