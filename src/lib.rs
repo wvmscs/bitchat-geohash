@@ -16,8 +16,9 @@
 //! with an in-memory store saved as a snapshot (`store::memory`).
 
 pub mod aggregate;
+#[cfg(target_arch = "wasm32")]
+pub mod browser;
 pub mod channels;
-#[cfg(not(target_arch = "wasm32"))]
 pub mod cli;
 pub mod directory;
 pub mod error;

@@ -151,6 +151,11 @@ impl Service {
         (status, body.to_string())
     }
 
+    /// The watched area now.
+    pub fn area(&self) -> String {
+        self.inner.holder.config().start
+    }
+
     /// A new event stream (`GET /api/events`).
     pub fn events(&self) -> Events {
         let (hello, rx) = self.inner.live.subscribe();

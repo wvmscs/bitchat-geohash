@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Added
+- Browser build (`wasm32-unknown-unknown`, without default features): the map runs in the
+  browser without a server. `web/build.sh` builds a static site: the server's page unchanged,
+  `shim.js` handing its `/api/*` requests and event stream to a worker, where the monitor runs
+  in WebAssembly on the browser's WebSockets, its state kept in the browser's database.
+  Options of the command line from the page's address (`?area=u09t&depth=2`). No Tor, and
+  relay failures are opaque in the browser (every one may recover).
+- `service::Service`: the map's requests and event stream without a web server.
+- `store::memory`: a store in memory saved as a JSON snapshot (the browser build's), checked
+  by the same tests as the SQLite store.
+
+### Changed
+- The views, commands, area changes and the task publishing the deltas move from `server` to
+  `service` (`server::model` stays); tasks, timers and WebSockets go through `rt` and `ws`.
+  Native behaviour unchanged.
+
 ## [0.5.0] - 2026-11-06
 
 ### Added

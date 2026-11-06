@@ -12,8 +12,9 @@
 //! [`BUCKET_RETENTION_SECS`]. Like the schema, no pubkey, nickname or
 //! message content.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
+use std::rc::Rc;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -82,7 +83,7 @@ struct BucketRow {
 
 /// Called with the snapshot to keep, at most every [`SAVE_EVERY`] while
 /// writes come, and when the writer is flushed or closed.
-pub type Saver = std::rc::Rc<dyn Fn(String)>;
+pub type Saver = Rc<dyn Fn(String)>;
 
 pub struct MemoryStore {
     tables: Tables,
@@ -434,18 +435,23 @@ impl MemoryStore {
 }
 
 /// The writer of the browser build: one thread there, so writes are applied
-/// at once, and the snapshot saved now and then ([`SAVE_EVERY`]). Same
-/// interface as the SQLite writer thread.
+/// at once, and the snapshot saved now and then ([`SAVE_EVERY`]); in the
+/// browser, writes left unsaved by that limit are saved [`SAVE_EVERY`]
+/// later. Same interface as the SQLite writer thread.
 pub struct MemoryWriter {
-    store: RefCell<MemoryStore>,
+    store: Rc<RefCell<MemoryStore>>,
     pending_error: RefCell<Option<Error>>,
+    /// A deferred save is on its way.
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    deferred: Rc<Cell<bool>>,
 }
 
 impl MemoryWriter {
     pub fn spawn(store: MemoryStore) -> Self {
         MemoryWriter {
-            store: RefCell::new(store),
+            store: Rc::new(RefCell::new(store)),
             pending_error: RefCell::new(None),
+            deferred: Rc::new(Cell::new(false)),
         }
     }
 
@@ -458,6 +464,18 @@ impl MemoryWriter {
             self.pending_error.borrow_mut().get_or_insert(e);
         }
         store.save(false);
+        #[cfg(target_arch = "wasm32")]
+        if store.dirty && !self.deferred.replace(true) {
+            // The task holds no strong reference: `close` takes the store.
+            let (store, deferred) = (Rc::downgrade(&self.store), self.deferred.clone());
+            crate::rt::spawn(async move {
+                crate::rt::sleep(SAVE_EVERY).await;
+                deferred.set(false);
+                if let Some(store) = store.upgrade() {
+                    store.borrow_mut().save(true);
+                }
+            });
+        }
         Ok(())
     }
 
@@ -469,7 +487,9 @@ impl MemoryWriter {
 
     /// Saves and hands the store back.
     pub fn close(self) -> Result<MemoryStore> {
-        let mut store = self.store.into_inner();
+        let mut store = Rc::try_unwrap(self.store)
+            .map_err(|_| Error::StoreClosed)?
+            .into_inner();
         store.save(true);
         Ok(store)
     }
