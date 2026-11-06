@@ -7,18 +7,11 @@
 //! for EOSE or CLOSED. Writing is never probed (it would post to the
 //! channel), and NIP-42 AUTH is never answered (the app does not).
 
-use std::collections::BTreeMap;
-use std::error::Error as StdError;
-use std::io::ErrorKind;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use futures_util::{SinkExt, StreamExt, stream};
-use serde_json::{Value, json};
-use tokio_tungstenite::tungstenite::{Error as WsError, Message};
-
-use crate::nostr::unix_now;
-use crate::plan::{ListenPlan, Subscription};
 use crate::store::Write;
+#[cfg(not(target_arch = "wasm32"))]
+pub use net::*;
 
 pub const PROBE_TIMEOUT: Duration = Duration::from_secs(8);
 /// Probes running at the same time.
@@ -102,162 +95,179 @@ impl Verdict {
     }
 }
 
-/// Probes a relay on one channel, with [`PROBE_TIMEOUT`].
-pub async fn probe(url: &str, geohash: &str) -> Verdict {
-    probe_with_timeout(url, geohash, PROBE_TIMEOUT).await
-}
+/// The probes themselves (native build; the browser's follow).
+#[cfg(not(target_arch = "wasm32"))]
+mod net {
+    use std::collections::BTreeMap;
+    use std::error::Error as StdError;
+    use std::io::ErrorKind;
+    use std::time::{Duration, Instant};
 
-pub async fn probe_with_timeout(url: &str, geohash: &str, timeout: Duration) -> Verdict {
-    let start = Instant::now();
-    let (status, text) = match tokio::time::timeout(timeout, read_channel(url, geohash)).await {
-        Err(_) => (
-            Status::Down,
-            format!("no answer within {} s", timeout.as_secs_f32()),
-        ),
-        Ok(Err(e)) if is_permanent(&*e) => (Status::Dead, format!("dead: {e}")),
-        Ok(Err(e)) => (Status::Down, format!("unreachable: {e}")),
-        Ok(Ok(outcome)) => {
-            let ms = start.elapsed().as_millis();
-            match outcome {
-                Outcome::Eose { events, challenged } => {
-                    let auth = if challenged {
-                        ", sends AUTH challenges"
-                    } else {
-                        ""
-                    };
-                    (
-                        Status::Ok,
-                        format!("usable ({ms} ms, {events} recent event(s){auth})"),
-                    )
+    use futures_util::{SinkExt, StreamExt, stream};
+    use serde_json::{Value, json};
+    use tokio_tungstenite::tungstenite::{Error as WsError, Message};
+
+    use super::{PROBE_TIMEOUT, Status, Verdict};
+    use crate::nostr::unix_now;
+    use crate::plan::{ListenPlan, Subscription};
+
+    /// Probes a relay on one channel, with [`PROBE_TIMEOUT`].
+    pub async fn probe(url: &str, geohash: &str) -> Verdict {
+        probe_with_timeout(url, geohash, PROBE_TIMEOUT).await
+    }
+
+    pub async fn probe_with_timeout(url: &str, geohash: &str, timeout: Duration) -> Verdict {
+        let start = Instant::now();
+        let (status, text) = match tokio::time::timeout(timeout, read_channel(url, geohash)).await {
+            Err(_) => (
+                Status::Down,
+                format!("no answer within {} s", timeout.as_secs_f32()),
+            ),
+            Ok(Err(e)) if is_permanent(&*e) => (Status::Dead, format!("dead: {e}")),
+            Ok(Err(e)) => (Status::Down, format!("unreachable: {e}")),
+            Ok(Ok(outcome)) => {
+                let ms = start.elapsed().as_millis();
+                match outcome {
+                    Outcome::Eose { events, challenged } => {
+                        let auth = if challenged {
+                            ", sends AUTH challenges"
+                        } else {
+                            ""
+                        };
+                        (
+                            Status::Ok,
+                            format!("usable ({ms} ms, {events} recent event(s){auth})"),
+                        )
+                    }
+                    Outcome::Closed(reason) if reason.contains("auth-required:") => (
+                        Status::Auth,
+                        format!("AUTH required: unusable by the app ({reason})"),
+                    ),
+                    Outcome::Closed(reason) => (Status::Refused, format!("refused: {reason}")),
                 }
-                Outcome::Closed(reason) if reason.contains("auth-required:") => (
-                    Status::Auth,
-                    format!("AUTH required: unusable by the app ({reason})"),
-                ),
-                Outcome::Closed(reason) => (Status::Refused, format!("refused: {reason}")),
             }
-        }
-    };
-    Verdict { status, text }
-}
+        };
+        Verdict { status, text }
+    }
 
-/// Probes every relay of the plan that has a watched channel (dead ones
-/// excluded), once each, on its first channel; at most `concurrency` at a
-/// time. Keyed by relay URL.
-pub async fn probe_relays(
-    plan: &ListenPlan,
-    concurrency: usize,
-    timeout: Duration,
-) -> BTreeMap<String, Verdict> {
-    probe_new_relays(plan, &BTreeMap::new(), concurrency, timeout).await
-}
+    /// Probes every relay of the plan that has a watched channel (dead ones
+    /// excluded), once each, on its first channel; at most `concurrency` at a
+    /// time. Keyed by relay URL.
+    pub async fn probe_relays(
+        plan: &ListenPlan,
+        concurrency: usize,
+        timeout: Duration,
+    ) -> BTreeMap<String, Verdict> {
+        probe_new_relays(plan, &BTreeMap::new(), concurrency, timeout).await
+    }
 
-/// Like [`probe_relays`], for the relays without a verdict in `known` only
-/// (after a relay list reload).
-pub async fn probe_new_relays(
-    plan: &ListenPlan,
-    known: &BTreeMap<String, Verdict>,
-    concurrency: usize,
-    timeout: Duration,
-) -> BTreeMap<String, Verdict> {
-    probe_where(
-        plan,
-        |relay| !known.contains_key(relay),
-        concurrency,
-        timeout,
-    )
-    .await
-}
-
-/// Probes the relays of the plan that `wanted` keeps (lot 20: the area's
-/// own channel first, the others in the background).
-pub async fn probe_where(
-    plan: &ListenPlan,
-    wanted: impl Fn(&str) -> bool,
-    concurrency: usize,
-    timeout: Duration,
-) -> BTreeMap<String, Verdict> {
-    let targets: Vec<(String, String)> = plan
-        .relays()
-        .into_iter()
-        .filter(|relay| wanted(relay))
-        .filter_map(|relay| {
-            let channel = plan
-                .subscriptions(&relay)
-                .into_iter()
-                .next()
-                .and_then(|s: Subscription| s.channels.into_iter().next())?;
-            Some((relay, channel))
-        })
-        .collect();
-    stream::iter(targets)
-        .map(|(relay, channel)| async move {
-            let verdict = probe_with_timeout(&relay, &channel, timeout).await;
-            (relay, verdict)
-        })
-        .buffer_unordered(concurrency.max(1))
-        .collect()
+    /// Like [`probe_relays`], for the relays without a verdict in `known` only
+    /// (after a relay list reload).
+    pub async fn probe_new_relays(
+        plan: &ListenPlan,
+        known: &BTreeMap<String, Verdict>,
+        concurrency: usize,
+        timeout: Duration,
+    ) -> BTreeMap<String, Verdict> {
+        probe_where(
+            plan,
+            |relay| !known.contains_key(relay),
+            concurrency,
+            timeout,
+        )
         .await
-}
-
-/// Failures a retry won't fix. rustls certificate and handshake errors reach
-/// us as `Io(InvalidData)`; DNS failures as an uncategorised I/O error.
-fn is_permanent(e: &(dyn StdError + 'static)) -> bool {
-    e.downcast_ref::<WsError>().is_some_and(is_permanent_ws)
-}
-
-pub(crate) fn is_permanent_ws(e: &WsError) -> bool {
-    match e {
-        WsError::Tls(_) | WsError::Url(_) => true,
-        WsError::Http(response) => response.status().is_client_error(),
-        WsError::Io(io) => {
-            matches!(
-                io.kind(),
-                ErrorKind::ConnectionRefused | ErrorKind::InvalidData
-            ) || io.to_string().contains("failed to lookup address")
-        }
-        _ => false,
     }
-}
 
-enum Outcome {
-    Eose { events: usize, challenged: bool },
-    Closed(String),
-}
+    /// Probes the relays of the plan that `wanted` keeps (lot 20: the area's
+    /// own channel first, the others in the background).
+    pub async fn probe_where(
+        plan: &ListenPlan,
+        wanted: impl Fn(&str) -> bool,
+        concurrency: usize,
+        timeout: Duration,
+    ) -> BTreeMap<String, Verdict> {
+        let targets: Vec<(String, String)> = plan
+            .relays()
+            .into_iter()
+            .filter(|relay| wanted(relay))
+            .filter_map(|relay| {
+                let channel = plan
+                    .subscriptions(&relay)
+                    .into_iter()
+                    .next()
+                    .and_then(|s: Subscription| s.channels.into_iter().next())?;
+                Some((relay, channel))
+            })
+            .collect();
+        stream::iter(targets)
+            .map(|(relay, channel)| async move {
+                let verdict = probe_with_timeout(&relay, &channel, timeout).await;
+                (relay, verdict)
+            })
+            .buffer_unordered(concurrency.max(1))
+            .collect()
+            .await
+    }
 
-const PROBE_LOOKBACK_SECS: i64 = 3600;
+    /// Failures a retry won't fix. rustls certificate and handshake errors reach
+    /// us as `Io(InvalidData)`; DNS failures as an uncategorised I/O error.
+    fn is_permanent(e: &(dyn StdError + 'static)) -> bool {
+        e.downcast_ref::<WsError>().is_some_and(is_permanent_ws)
+    }
 
-async fn read_channel(url: &str, geohash: &str) -> Result<Outcome, Box<dyn StdError>> {
-    let (mut ws, _) = tokio_tungstenite::connect_async(url).await?;
-    let filter = json!({
-        "kinds": [crate::KIND_GEO_MESSAGE, crate::KIND_GEO_PRESENCE],
-        "#g": [geohash],
-        "since": unix_now() - PROBE_LOOKBACK_SECS,
-        "limit": 200,
-    });
-    ws.send(Message::text(json!(["REQ", "probe", filter]).to_string()))
-        .await?;
-    let (mut events, mut challenged) = (0, false);
-    while let Some(msg) = ws.next().await {
-        let text = match msg? {
-            Message::Text(t) => t,
-            Message::Close(_) => break,
-            _ => continue,
-        };
-        let Ok(Value::Array(v)) = serde_json::from_str::<Value>(text.as_str()) else {
-            continue;
-        };
-        let why = |i: usize| v.get(i).and_then(Value::as_str).unwrap_or("").to_owned();
-        match v.first().and_then(Value::as_str) {
-            Some("EVENT") => events += 1,
-            Some("AUTH") => challenged = true,
-            Some("EOSE") => {
-                let _ = ws.close(None).await;
-                return Ok(Outcome::Eose { events, challenged });
+    pub(crate) fn is_permanent_ws(e: &WsError) -> bool {
+        match e {
+            WsError::Tls(_) | WsError::Url(_) => true,
+            WsError::Http(response) => response.status().is_client_error(),
+            WsError::Io(io) => {
+                matches!(
+                    io.kind(),
+                    ErrorKind::ConnectionRefused | ErrorKind::InvalidData
+                ) || io.to_string().contains("failed to lookup address")
             }
-            Some("CLOSED") => return Ok(Outcome::Closed(why(2))),
-            _ => {}
+            _ => false,
         }
     }
-    Err("connection closed before EOSE".into())
+
+    enum Outcome {
+        Eose { events: usize, challenged: bool },
+        Closed(String),
+    }
+
+    const PROBE_LOOKBACK_SECS: i64 = 3600;
+
+    async fn read_channel(url: &str, geohash: &str) -> Result<Outcome, Box<dyn StdError>> {
+        let (mut ws, _) = tokio_tungstenite::connect_async(url).await?;
+        let filter = json!({
+            "kinds": [crate::KIND_GEO_MESSAGE, crate::KIND_GEO_PRESENCE],
+            "#g": [geohash],
+            "since": unix_now() - PROBE_LOOKBACK_SECS,
+            "limit": 200,
+        });
+        ws.send(Message::text(json!(["REQ", "probe", filter]).to_string()))
+            .await?;
+        let (mut events, mut challenged) = (0, false);
+        while let Some(msg) = ws.next().await {
+            let text = match msg? {
+                Message::Text(t) => t,
+                Message::Close(_) => break,
+                _ => continue,
+            };
+            let Ok(Value::Array(v)) = serde_json::from_str::<Value>(text.as_str()) else {
+                continue;
+            };
+            let why = |i: usize| v.get(i).and_then(Value::as_str).unwrap_or("").to_owned();
+            match v.first().and_then(Value::as_str) {
+                Some("EVENT") => events += 1,
+                Some("AUTH") => challenged = true,
+                Some("EOSE") => {
+                    let _ = ws.close(None).await;
+                    return Ok(Outcome::Eose { events, challenged });
+                }
+                Some("CLOSED") => return Ok(Outcome::Closed(why(2))),
+                _ => {}
+            }
+        }
+        Err("connection closed before EOSE".into())
+    }
 }

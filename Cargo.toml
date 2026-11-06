@@ -17,19 +17,24 @@ k256 = { version = "0.13", default-features = false, features = ["schnorr", "std
 # Relay lists, the apps' relay choice, geohash arithmetic: shared with
 # bitchat-console (its decision D2), own repository.
 geohash-relays = { git = "https://github.com/wvmscs/geohash-relays.git", tag = "strategies-2026.11.06" }
-tokio = { version = "1.54", features = ["rt-multi-thread", "net", "sync", "macros", "time"] }
-tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
-rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+# Channels and `select!` only here: the runtime, timers and sockets are native
+# (below); the browser build has its own.
+tokio = { version = "1.54", features = ["sync", "macros"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 tracing = "0.1"
+sha2 = "0.10"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { version = "1.54", features = ["rt-multi-thread", "net", "time"] }
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rusqlite = { version = "0.41", features = ["bundled"] }
 # Relay list downloads (24 h reload). No bundled crypto provider: the ring one
 # is installed process-wide, as for the WebSocket connections.
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
-sha2 = "0.10"
 # Web server of step 2 (feature `server`).
 axum = { version = "0.8", optional = true, default-features = false, features = ["tokio", "http1", "json", "query"] }
 # TLS for the server (lot 13 bis): HTTP/1.1 and HTTP/2 negotiated by ALPN.
@@ -42,6 +47,11 @@ tracing-subscriber = { version = "0.3", optional = true }
 # Cells from a place, an address or an IP address, and the approximate name of
 # a cell (feature `geocode`): BAN, Nominatim, DB-IP. Own repository.
 geohash-lookup = { git = "https://github.com/wvmscs/geohash-lookup.git", tag = "v0.1.1", optional = true, default-features = false }
+
+# Browser build (wasm32-unknown-unknown): randomness from the browser's crypto
+# (pulled by k256's rand_core).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
 
 [features]
 default = ["server", "geocode"]

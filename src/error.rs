@@ -18,10 +18,12 @@ pub enum Error {
     NoFinerLevel(String),
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
+    #[cfg(not(target_arch = "wasm32"))]
     #[error("database error: {0}")]
     Sqlite(#[from] rusqlite::Error),
     #[error("database schema version {found} is newer than this code (up to {supported})")]
     SchemaTooNew { found: u32, supported: u32 },
+    #[cfg(not(target_arch = "wasm32"))]
     #[error("migration {name} failed: {source}")]
     Migration {
         name: String,
@@ -58,13 +60,16 @@ pub enum Error {
     Geocode(String),
     #[error("no place found for this text: try a town, an address, or #geohash")]
     PlaceNotFound,
+    #[cfg(not(target_arch = "wasm32"))]
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
     /// Boxed: it carries an HTTP response and would bloat every `Result`.
+    #[cfg(not(target_arch = "wasm32"))]
     #[error("WebSocket error: {0}")]
     WebSocket(Box<tokio_tungstenite::tungstenite::Error>),
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl From<tokio_tungstenite::tungstenite::Error> for Error {
     fn from(e: tokio_tungstenite::tungstenite::Error) -> Self {
         Error::WebSocket(Box::new(e))

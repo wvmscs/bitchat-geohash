@@ -51,6 +51,7 @@ pub const FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30
 
 /// Reads a list. A list without any usable relay is an error: it would
 /// leave every channel without relay.
+#[cfg(not(target_arch = "wasm32"))]
 pub async fn fetch(
     source: &ListSource,
     platform: Platform,

@@ -10,15 +10,21 @@
 //!
 //! Feature `server` (on by default): the web server of the map and the
 //! `bitchat-geohash` binary.
+//!
+//! Browser build (`wasm32-unknown-unknown`, without default features): the
+//! pure modules for now; the listener, the monitor and the store follow.
 
 pub mod aggregate;
 pub mod channels;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod cli;
 pub mod directory;
 pub mod error;
 #[cfg(feature = "geocode")]
 pub mod geocode;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod listener;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod monitor;
 pub mod nostr;
 pub mod plan;
@@ -45,6 +51,7 @@ pub use geohash_relays::GEO_RELAY_COUNT;
 
 /// Installs ring as the process-wide rustls crypto provider, needed before
 /// any `wss://` connection or HTTPS download. Calling it again is harmless.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn install_crypto_provider() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 }
