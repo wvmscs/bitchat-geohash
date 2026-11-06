@@ -78,8 +78,8 @@ seulement si le projet réussit, sur décision de l'utilisateur.
 
 | Lot | Contenu | État |
 |---|---|---|
-| 1 | Cible wasm : dépendances par cible, `cargo check --target wasm32-unknown-unknown` | ⬜ |
-| 2 | `rt` et `ws` (natif identique à aujourd'hui, tests inchangés) | ⬜ |
+| 1 | Cible wasm : dépendances par cible, `cargo check --target wasm32-unknown-unknown` | ✅ 36b0b56 |
+| 2 | `rt` et `ws` (natif identique à aujourd'hui, tests inchangés) | 🟨 |
 | 3 | `Store` mémoire + instantané (tests communs aux deux réalisations) | ⬜ |
 | 4 | Routes sans HTTP (`api::handle`) partagées avec axum | ⬜ |
 | 5 | Point d'entrée wasm, worker, `shim.js`, page | ⬜ |
@@ -92,12 +92,17 @@ seulement si le projet réussit, sur décision de l'utilisateur.
 |---|---|---|
 | B1 | Branches `*-brow` par dépôt, compilation conditionnelle ; report sur `main` si succès | ✅ utilisateur 2026-11-06 |
 | B2 | Proxy local optionnel (Arti), installé par l'utilisateur s'il le veut | ✅ utilisateur 2026-11-06 |
-| B3 | Stockage wasm : tables en mémoire pur Rust + instantanés IndexedDB, pas SQLite (SQLite en wasm demande un clang LLVM, absent du Mac) | ⏸ |
-| B4 | Nouvelles dépendances, cible wasm seulement : `wasm-bindgen`, `wasm-bindgen-futures`, `js-sys`, `web-sys`, `getrandom` (feature JS) | ⏸ |
-| B5 | Tests de page par Chrome sans fenêtre et le protocole DevTools (node), sans pilote à installer | ⏸ |
+| B3 | Stockage wasm : tables en mémoire pur Rust + instantanés IndexedDB, pas SQLite (SQLite en wasm demande un clang LLVM, absent du Mac ; l'utilisateur préfère éviter `brew install llvm`) | ✅ utilisateur 2026-11-07 |
+| B4 | Nouvelles dépendances, cible wasm seulement : `wasm-bindgen`, `wasm-bindgen-futures`, `js-sys`, `web-sys`, `getrandom` (feature JS) | ✅ utilisateur 2026-11-07 |
+| B5 | Tests de page par Chrome sans fenêtre et le protocole DevTools (node), sans pilote à installer | ✅ utilisateur 2026-11-07 |
 
 ## Journal
 
 - 2026-11-06 : outils installés par l'utilisateur (`wasm32-unknown-unknown`, `wasm-bindgen-cli`
   0.2.130). Essai : la bibliothèque de la carte s'arrête d'abord sur `getrandom` (dépendances
   natives à mettre par cible). Plan rédigé.
+- 2026-11-07 : B3, B4, B5 approuvés (pas de `brew install llvm`). Lot 1 : dépendances natives
+  dans une table par cible, enregistrements du stockage séparés de SQLite (`store/sqlite.rs`),
+  sondes, téléchargement, listener, moniteur et ligne de commande natifs pour l'instant. Seule
+  dépendance wasm à ce stade : `getrandom` (feature `js`, tirée par `k256`). Natif inchangé
+  (tests et clippy identiques à `main`).
