@@ -49,9 +49,14 @@ tracing-subscriber = { version = "0.3", optional = true }
 geohash-lookup = { git = "https://github.com/wvmscs/geohash-lookup.git", tag = "v0.1.1", optional = true, default-features = false }
 
 # Browser build (wasm32-unknown-unknown): randomness from the browser's crypto
-# (pulled by k256's rand_core).
+# (pulled by k256's rand_core); timers, tasks and WebSockets of the browser.
+# `wasm-bindgen` exactly as the `wasm-bindgen` command that builds the site.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
+wasm-bindgen = "=0.2.130"
+wasm-bindgen-futures = "0.4.80"
+js-sys = "0.3.107"
+web-sys = { version = "0.3.107", features = ["BinaryType", "CloseEvent", "Event", "MessageEvent", "WebSocket"] }
 
 [features]
 default = ["server", "geocode"]

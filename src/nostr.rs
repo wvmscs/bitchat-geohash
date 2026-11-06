@@ -21,10 +21,7 @@ pub const MAX_EVENT_TAG_VALUE_BYTES: usize = 1024;
 
 /// Unix time, in seconds.
 pub fn unix_now() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
+    crate::rt::unix_now()
 }
 
 /// Why an event does not verify.

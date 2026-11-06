@@ -11,19 +11,17 @@
 //! published, and AUTH challenges are ignored, as the app does.
 
 use std::collections::BTreeMap;
-use std::hash::{BuildHasher, RandomState};
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
-use tokio_tungstenite::tungstenite::Message;
 
 use crate::aggregate::Observation;
 use crate::nostr::{Event, unix_now};
 use crate::plan::{ListenPlan, Subscription};
+use crate::rt::{self, JoinHandle};
+use crate::ws::{Frame, Socket};
 
 /// Unix seconds; injectable for tests.
 pub type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
@@ -131,8 +129,8 @@ impl Listener {
         self.conns.len()
     }
 
-    /// Brings the connections in line with `plan`. Must run inside a tokio
-    /// runtime.
+    /// Brings the connections in line with `plan`. Native build: must run
+    /// inside a tokio runtime.
     pub fn sync(&mut self, plan: &ListenPlan) {
         let mut desired: BTreeMap<(String, usize), Vec<Subscription>> = BTreeMap::new();
         for relay in plan.relays() {
@@ -180,7 +178,7 @@ impl Listener {
                 }
                 None => {
                     let (tx, rx) = mpsc::unbounded_channel();
-                    let task = tokio::spawn(run_connection(
+                    let task = rt::spawn(run_connection(
                         key.0.clone(),
                         key.1,
                         subs.clone(),
@@ -235,10 +233,7 @@ async fn run_connection(
     let mut backoff = config.backoff_min;
     loop {
         state(ConnState::Connecting);
-        let connect = tokio::time::timeout(
-            config.connect_timeout,
-            tokio_tungstenite::connect_async(relay.as_str()),
-        );
+        let connect = rt::timeout(config.connect_timeout, Socket::connect(&relay));
         let end = tokio::select! {
             cmd = rx.recv() => match cmd {
                 None | Some(Cmd::Shutdown) => End::Shutdown,
@@ -247,9 +242,9 @@ async fn run_connection(
             },
             result = connect => match result {
                 Err(_) => End::Lost("connection timeout".into()),
-                Ok(Err(e)) if crate::probe::is_permanent_ws(&e) => End::Abandon { auth: false, reason: e.to_string() },
+                Ok(Err(e)) if e.is_permanent() => End::Abandon { auth: false, reason: e.to_string() },
                 Ok(Err(e)) => End::Lost(e.to_string()),
-                Ok(Ok((ws, _))) => {
+                Ok(Ok(ws)) => {
                     state(ConnState::Connected);
                     backoff = config.backoff_min;
                     session(ws, &relay, &mut subs, &mut rx, &events, &config).await
@@ -268,7 +263,7 @@ async fn run_connection(
                 tracing::debug!(%relay, connection, %reason, ?retry_in, "connection lost");
                 state(ConnState::Waiting { retry_in });
                 backoff = (backoff * 2).min(config.backoff_max);
-                let sleep = tokio::time::sleep(retry_in);
+                let sleep = rt::sleep(retry_in);
                 tokio::pin!(sleep);
                 loop {
                     tokio::select! {
@@ -297,11 +292,8 @@ fn apply(subs: &mut Vec<Subscription>, cmd: Cmd) {
     }
 }
 
-type Ws =
-    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
-
 async fn session(
-    mut ws: Ws,
+    mut ws: Socket,
     relay: &str,
     subs: &mut Vec<Subscription>,
     rx: &mut mpsc::UnboundedReceiver<Cmd>,
@@ -310,24 +302,24 @@ async fn session(
 ) -> End {
     let since = |config: &ListenerConfig| Some((config.clock)() - config.lookback_secs);
     for s in subs.iter() {
-        if let Err(e) = ws.send(req(s, since(config))).await {
+        if let Err(e) = ws.send_text(req(s, since(config))).await {
             return End::Lost(e.to_string());
         }
     }
     loop {
         tokio::select! {
             cmd = rx.recv() => {
-                let frames: Vec<Message> = match &cmd {
+                let frames: Vec<String> = match &cmd {
                     None | Some(Cmd::Shutdown) => {
-                        let _ = ws.close(None).await;
+                        ws.close().await;
                         return End::Shutdown;
                     }
                     Some(Cmd::Send(new)) => new.iter().map(|s| req(s, since(config))).collect(),
-                    Some(Cmd::Close(ids)) => ids.iter().map(|id| Message::text(json!(["CLOSE", id]).to_string())).collect(),
+                    Some(Cmd::Close(ids)) => ids.iter().map(|id| json!(["CLOSE", id]).to_string()).collect(),
                 };
                 apply(subs, cmd.expect("handled above"));
                 for f in frames {
-                    if let Err(e) = ws.send(f).await {
+                    if let Err(e) = ws.send_text(f).await {
                         return End::Lost(e.to_string());
                     }
                 }
@@ -336,11 +328,11 @@ async fn session(
                 let text = match msg {
                     None => return End::Lost("closed by the relay".into()),
                     Some(Err(e)) => return End::Lost(e.to_string()),
-                    Some(Ok(Message::Text(t))) => t,
-                    Some(Ok(Message::Close(_))) => return End::Lost("closed by the relay".into()),
+                    Some(Ok(Frame::Text(t))) => t,
+                    Some(Ok(Frame::Close)) => return End::Lost("closed by the relay".into()),
                     Some(Ok(_)) => continue,
                 };
-                let Ok(Value::Array(v)) = serde_json::from_str::<Value>(text.as_str()) else { continue };
+                let Ok(Value::Array(v)) = serde_json::from_str::<Value>(&text) else { continue };
                 let str_at = |i: usize| v.get(i).and_then(Value::as_str).unwrap_or("").to_owned();
                 match v.first().and_then(Value::as_str) {
                     Some("EVENT") => {
@@ -353,7 +345,7 @@ async fn session(
                     Some("CLOSED") => {
                         let reason = str_at(2);
                         if reason.contains("auth-required:") {
-                            let _ = ws.close(None).await;
+                            ws.close().await;
                             return End::Abandon { auth: true, reason };
                         }
                         let _ = events.send(ListenerEvent::Closed { relay: relay.to_owned(), subscription: str_at(1), reason });
@@ -369,12 +361,11 @@ async fn session(
     }
 }
 
-fn req(sub: &Subscription, since: Option<i64>) -> Message {
-    Message::text(json!(["REQ", sub.id, sub.filter(since).to_json()]).to_string())
+fn req(sub: &Subscription, since: Option<i64>) -> String {
+    json!(["REQ", sub.id, sub.filter(since).to_json()]).to_string()
 }
 
 /// `delay` scaled by a random factor in [0.5, 1.5).
 fn jitter(delay: Duration) -> Duration {
-    let r = RandomState::new().hash_one(std::time::Instant::now()) % 1000;
-    delay.mul_f64(0.5 + r as f64 / 1000.0)
+    delay.mul_f64(0.5 + rt::random_unit())
 }

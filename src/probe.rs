@@ -10,7 +10,6 @@
 use std::time::Duration;
 
 use crate::store::Write;
-#[cfg(not(target_arch = "wasm32"))]
 pub use net::*;
 
 pub const PROBE_TIMEOUT: Duration = Duration::from_secs(8);
@@ -95,21 +94,20 @@ impl Verdict {
     }
 }
 
-/// The probes themselves (native build; the browser's follow).
-#[cfg(not(target_arch = "wasm32"))]
+/// The probes themselves.
 mod net {
     use std::collections::BTreeMap;
     use std::error::Error as StdError;
-    use std::io::ErrorKind;
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
 
-    use futures_util::{SinkExt, StreamExt, stream};
+    use futures_util::{StreamExt, stream};
     use serde_json::{Value, json};
-    use tokio_tungstenite::tungstenite::{Error as WsError, Message};
 
     use super::{PROBE_TIMEOUT, Status, Verdict};
     use crate::nostr::unix_now;
     use crate::plan::{ListenPlan, Subscription};
+    use crate::rt::{self, Instant};
+    use crate::ws::{Frame, Socket, WsError};
 
     /// Probes a relay on one channel, with [`PROBE_TIMEOUT`].
     pub async fn probe(url: &str, geohash: &str) -> Verdict {
@@ -118,7 +116,7 @@ mod net {
 
     pub async fn probe_with_timeout(url: &str, geohash: &str, timeout: Duration) -> Verdict {
         let start = Instant::now();
-        let (status, text) = match tokio::time::timeout(timeout, read_channel(url, geohash)).await {
+        let (status, text) = match rt::timeout(timeout, read_channel(url, geohash)).await {
             Err(_) => (
                 Status::Down,
                 format!("no answer within {} s", timeout.as_secs_f32()),
@@ -209,24 +207,10 @@ mod net {
             .await
     }
 
-    /// Failures a retry won't fix. rustls certificate and handshake errors reach
-    /// us as `Io(InvalidData)`; DNS failures as an uncategorised I/O error.
+    /// Failures a retry won't fix ([`WsError::is_permanent`]).
     fn is_permanent(e: &(dyn StdError + 'static)) -> bool {
-        e.downcast_ref::<WsError>().is_some_and(is_permanent_ws)
-    }
-
-    pub(crate) fn is_permanent_ws(e: &WsError) -> bool {
-        match e {
-            WsError::Tls(_) | WsError::Url(_) => true,
-            WsError::Http(response) => response.status().is_client_error(),
-            WsError::Io(io) => {
-                matches!(
-                    io.kind(),
-                    ErrorKind::ConnectionRefused | ErrorKind::InvalidData
-                ) || io.to_string().contains("failed to lookup address")
-            }
-            _ => false,
-        }
+        e.downcast_ref::<WsError>()
+            .is_some_and(WsError::is_permanent)
     }
 
     enum Outcome {
@@ -237,23 +221,23 @@ mod net {
     const PROBE_LOOKBACK_SECS: i64 = 3600;
 
     async fn read_channel(url: &str, geohash: &str) -> Result<Outcome, Box<dyn StdError>> {
-        let (mut ws, _) = tokio_tungstenite::connect_async(url).await?;
+        let mut ws = Socket::connect(url).await?;
         let filter = json!({
             "kinds": [crate::KIND_GEO_MESSAGE, crate::KIND_GEO_PRESENCE],
             "#g": [geohash],
             "since": unix_now() - PROBE_LOOKBACK_SECS,
             "limit": 200,
         });
-        ws.send(Message::text(json!(["REQ", "probe", filter]).to_string()))
+        ws.send_text(json!(["REQ", "probe", filter]).to_string())
             .await?;
         let (mut events, mut challenged) = (0, false);
         while let Some(msg) = ws.next().await {
             let text = match msg? {
-                Message::Text(t) => t,
-                Message::Close(_) => break,
+                Frame::Text(t) => t,
+                Frame::Close => break,
                 _ => continue,
             };
-            let Ok(Value::Array(v)) = serde_json::from_str::<Value>(text.as_str()) else {
+            let Ok(Value::Array(v)) = serde_json::from_str::<Value>(&text) else {
                 continue;
             };
             let why = |i: usize| v.get(i).and_then(Value::as_str).unwrap_or("").to_owned();
@@ -261,7 +245,7 @@ mod net {
                 Some("EVENT") => events += 1,
                 Some("AUTH") => challenged = true,
                 Some("EOSE") => {
-                    let _ = ws.close(None).await;
+                    ws.close().await;
                     return Ok(Outcome::Eose { events, challenged });
                 }
                 Some("CLOSED") => return Ok(Outcome::Closed(why(2))),
